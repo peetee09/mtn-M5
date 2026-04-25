@@ -1337,8 +1337,8 @@ Private Sub BuildCHARTS(wb As Workbook)
         .HasTitle = True
         .ChartTitle.Text = "Audit Compliance % per Shift"
         .SeriesCollection.NewSeries
-        .SeriesCollection(1).Values  = wsKPI.Range("K:K")
-        .SeriesCollection(1).XValues = wsKPI.Range("A:A")
+        .SeriesCollection(1).Values  = wsKPI.Range("K2:K1048576")
+        .SeriesCollection(1).XValues = wsKPI.Range("B2:B1048576")
         .SeriesCollection(1).Name    = "Audit %"
         .Axes(xlValue).HasTitle = True
         .Axes(xlValue).AxisTitle.Text = "Audit %"
