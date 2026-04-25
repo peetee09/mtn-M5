@@ -645,9 +645,9 @@ def build_charts(wb: Workbook) -> None:
     chart1.y_axis.numFmt = "0%"
     chart1.y_axis.scaling.min = 0
 
-    data1 = Reference(ws_daily, min_col=5, min_row=1, max_row=500)   # DailyPerformancePct
+    data1 = Reference(ws_daily, min_col=5, min_row=1, max_row=1048576)   # DailyPerformancePct
     chart1.add_data(data1, titles_from_data=True)
-    cats1 = Reference(ws_daily, min_col=1, min_row=2, max_row=500)   # BusinessDate
+    cats1 = Reference(ws_daily, min_col=1, min_row=2, max_row=1048576)   # BusinessDate
     chart1.set_categories(cats1)
 
     s1 = chart1.series[0]
