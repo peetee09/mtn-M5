@@ -13,14 +13,15 @@ Usage:
     # -> creates  KPI_Workbook.xlsm  in the current directory
 
 Note on macros:
-    openpyxl cannot embed VBA code.  The output file uses the .xlsm
-    extension (macro-enabled container) so that Excel does not strip the
-    format, but the file contains NO macro code.  To get working buttons
-    and RefreshAll / TakeDailySnapshot macros, open the generated file in
-    Excel, paste CreateKPIWorkbook.bas into the VBA editor, and save.
-    Alternatively, run CreateKPIWorkbook.bas directly from the VBA editor
-    inside an xlsm-hosted workbook — that path both builds and saves the
-    file with macros fully embedded.
+    openpyxl cannot embed VBA code.  The output file is saved as .xlsm
+    (macro-enabled workbook) with wb.is_macro_workbook = True so that
+    openpyxl writes the correct OOXML content type for xlsm.  The file
+    contains NO macro code.  To get working buttons and the RefreshAll /
+    TakeDailySnapshot macros, open the generated file in Excel, paste
+    CreateKPIWorkbook.bas into the VBA editor (Alt+F11 > Insert > Module),
+    and save.  Alternatively, run CreateKPIWorkbook.bas directly from the
+    VBA editor inside an xlsm-hosted workbook — that path both builds and
+    saves the file with macros fully embedded.
 
 Compatibility: Excel 2016 and later.
 Unprotect password: KPI2024
@@ -29,6 +30,8 @@ Unprotect password: KPI2024
 from __future__ import annotations
 
 import datetime
+import io
+import zipfile
 from typing import List
 
 from openpyxl import Workbook
@@ -1115,6 +1118,34 @@ def _autofit(ws) -> None:
 
 def build_workbook(output_path: str = "KPI_Workbook.xlsm") -> None:
     wb = Workbook()
+
+    # openpyxl determines the OOXML content type from wb.vba_archive, not from
+    # the file extension.  Without a vba_archive it writes the plain-xlsx
+    # content type even when the output path ends in .xlsm, which causes Excel
+    # to flag the file as corrupt and refuse to open it.
+    #
+    # Setting vba_archive to a minimal stub (two required entries, no actual
+    # VBA binary) is enough to make openpyxl emit the correct
+    # "application/vnd.ms-excel.sheet.macroEnabled.main+xml" content type.
+    # _merge_vba() only copies files whose paths match xl/vba, vmlDrawing, etc.,
+    # so the stub entries never appear in the output archive.
+    _stub = io.BytesIO()
+    with zipfile.ZipFile(_stub, "w") as _z:
+        _z.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            "</Types>",
+        )
+        _z.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            "</Relationships>",
+        )
+    _stub.seek(0)
+    wb.vba_archive = zipfile.ZipFile(_stub, "r")
+
     # Remove default sheet
     if "Sheet" in wb.sheetnames:
         del wb["Sheet"]
