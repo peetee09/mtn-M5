@@ -180,7 +180,7 @@ A: BusinessDate  B: ShiftName  C: LPN  D: EnteredBy  E: Notes  F: DupFlag
    |--------|---------|
    | C | `=COUNTIFS(tblShipped[BusinessDate],[@BusinessDate],tblShipped[ShiftName],[@ShiftName])` |
    | D | `=SUMIFS(tblStaffing[StaffAvailable],tblStaffing[BusinessDate],[@BusinessDate],tblStaffing[ShiftName],[@ShiftName])` |
-   | E | `=IFERROR(INDEX(tblTargetsDaily[TargetPerPersonPerShift],MATCH(1,(tblTargetsDaily[BusinessDate]=[@BusinessDate])*(tblTargetsDaily[ShiftName]=[@ShiftName]),0)),0)` (**array formula — Ctrl+Shift+Enter**) |
+   | E | `=IFERROR(INDEX(tblTargetsDaily[TargetPerPersonPerShift],MATCH(1,(tblTargetsDaily[BusinessDate]=[@BusinessDate])*(tblTargetsDaily[ShiftName]=[@ShiftName]),0)),0)` (**array formula — press Ctrl+Shift+Enter in Excel 2016; plain Enter in Excel 365/2021**) |
    | F | `=[@TotalStaff]*[@TargetPerPerson]` |
    | G | `=IFERROR([@ShippedCartons]/[@ExpectedCartons],0)` |
    | H | `=IF([@PerformancePct]>=1,"Green",IF([@PerformancePct]>=0.9,"Amber","Red"))` |

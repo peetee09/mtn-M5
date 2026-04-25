@@ -46,6 +46,14 @@ DARK_HEX   = "FF1E1E1E"
 BLUE_HEX   = "FF0070C0"
 
 UNPROTECT_PW = "KPI2024"
+# NOTE: This password is intentionally visible in the source code.
+# It is a shared workbook protection password documented for all operators
+# (not a user authentication credential). Change it in CONFIG if required.
+
+
+def _hex_font_color(hex_color: str) -> str:
+    """Strip the two-character alpha prefix from an ARGB hex string for Font.color."""
+    return hex_color[2:]
 
 
 def fill(hex_color: str) -> PatternFill:
@@ -110,7 +118,7 @@ def build_config(wb: Workbook) -> None:
     ws.sheet_properties.tabColor = "808080"
 
     ws["A1"] = "CONFIG - DO NOT DELETE OR RENAME THIS SHEET"
-    ws["A1"].font = Font(bold=True, color=RED_HEX[2:], size=12)
+    ws["A1"].font = Font(bold=True, color=_hex_font_color(RED_HEX), size=12)
 
     # Shift table
     ws["A3"] = "SHIFTS"
@@ -203,7 +211,7 @@ def build_in_packed(wb: Workbook) -> None:
     ws.conditional_formatting.add(
         f"{ps_col}2:{ps_col}10000",
         Rule(type="containsText", operator="containsText", text="Overdue",
-             dxf=DifferentialStyle(fill=fill(RED_HEX), font=Font(color=WHITE_HEX[2:])))
+             dxf=DifferentialStyle(fill=fill(RED_HEX), font=Font(color=_hex_font_color(WHITE_HEX))))
     )
     ws.conditional_formatting.add(
         f"{ps_col}2:{ps_col}10000",
@@ -270,7 +278,7 @@ def build_in_hrp(wb: Workbook) -> None:
     ws.conditional_formatting.add(
         f"{inc_col}2:{inc_col}10000",
         Rule(type="cellIs", operator="equal", formula=['"TRUE"'],
-             dxf=DifferentialStyle(fill=fill(RED_HEX), font=Font(color=WHITE_HEX[2:])))
+             dxf=DifferentialStyle(fill=fill(RED_HEX), font=Font(color=_hex_font_color(WHITE_HEX))))
     )
 
     freeze(ws)
@@ -467,7 +475,7 @@ def build_action_packed(wb: Workbook) -> None:
     ws.conditional_formatting.add(
         "E2:E10000",
         Rule(type="containsText", operator="containsText", text="Overdue",
-             dxf=DifferentialStyle(fill=fill(RED_HEX), font=Font(color=WHITE_HEX[2:])))
+             dxf=DifferentialStyle(fill=fill(RED_HEX), font=Font(color=_hex_font_color(WHITE_HEX))))
     )
     ws.conditional_formatting.add(
         "E2:E10000",
@@ -502,7 +510,7 @@ def build_data_quality(wb: Workbook) -> None:
     ws.sheet_properties.tabColor = "FFC000"
 
     ws["A1"] = "DATA QUALITY CHECKS"
-    ws["A1"].font = Font(bold=True, size=14, color=HEADER_HEX[2:])
+    ws["A1"].font = Font(bold=True, size=14, color=_hex_font_color(HEADER_HEX))
 
     hdrs = ["Check", "Formula / Logic", "Result", "Status"]
     header_style(ws, 3, hdrs)
@@ -530,7 +538,7 @@ def build_data_quality(wb: Workbook) -> None:
 
     for r_off, (label, formula) in enumerate(checks, start=4):
         ws.cell(row=r_off, column=1, value=label)
-        ws.cell(row=r_off, column=2, value=f"'{formula}")   # display text
+        ws.cell(row=r_off, column=2, value=f"'{formula}")   # leading apostrophe forces Excel to treat this as display text, not an evaluated formula
         ws.cell(row=r_off, column=3).value = formula         # live formula
         ws.cell(row=r_off, column=4).value = \
             f'=IF(C{r_off}=0,"OK","WARNING")'
@@ -561,20 +569,20 @@ def build_dashboard(wb: Workbook) -> None:
     for row in ws.iter_rows(min_row=1, max_row=60, min_col=1, max_col=14):
         for cell in row:
             cell.fill = fill(DARK_HEX)
-            cell.font = Font(color=WHITE_HEX[2:])
+            cell.font = Font(color=_hex_font_color(WHITE_HEX))
 
     # Title
     ws.merge_cells("A1:N1")
     title_cell = ws["A1"]
     title_cell.value = "WAREHOUSE / DISPATCH KPI DASHBOARD"
-    title_cell.font = Font(bold=True, size=18, color=WHITE_HEX[2:])
+    title_cell.font = Font(bold=True, size=18, color=_hex_font_color(WHITE_HEX))
     title_cell.fill = fill(HEADER_HEX)
     title_cell.alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 30
 
     ws["A2"] = "Last Refreshed:"
     ws["B2"].value = f'=TEXT(NOW(),"dd/mm/yyyy hh:mm")'
-    ws["B2"].font = Font(bold=True, color=WHITE_HEX[2:])
+    ws["B2"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
 
     # KPI Cards
     _kpi_card(ws, row=4, col=2, title="HRP OPEN ITEMS",
@@ -595,7 +603,7 @@ def build_dashboard(wb: Workbook) -> None:
 
     # Instructions
     ws["A14"] = "CHARTS AREA"
-    ws["A14"].font = Font(bold=True, size=12, color=WHITE_HEX[2:])
+    ws["A14"].font = Font(bold=True, size=12, color=_hex_font_color(WHITE_HEX))
     ws["A14"].fill = fill(DARK_HEX)
 
     ws["A15"] = ("After adding data to the input sheets, use the 'Refresh All' button "
@@ -604,7 +612,7 @@ def build_dashboard(wb: Workbook) -> None:
     ws["A15"].fill = fill(DARK_HEX)
 
     ws["A17"] = "FILTER GUIDE:"
-    ws["A17"].font = Font(bold=True, color=WHITE_HEX[2:])
+    ws["A17"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
     ws["A17"].fill = fill(DARK_HEX)
     ws["A18"] = "Use Excel AutoFilter on T_DISPATCH_KPI for ShiftName / BusinessDate / RAG filters."
     ws["A18"].fill = fill(DARK_HEX)
@@ -613,7 +621,7 @@ def build_dashboard(wb: Workbook) -> None:
 
     # Instruction note about buttons
     ws["A21"] = "BUTTONS (add manually or run the VBA RefreshAll / TakeDailySnapshot macros):"
-    ws["A21"].font = Font(bold=True, color=WHITE_HEX[2:])
+    ws["A21"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
     ws["A21"].fill = fill(DARK_HEX)
 
     button_notes = [
@@ -646,7 +654,7 @@ def _kpi_card(ws, row: int, col: int, title: str, formula: str, bg: str) -> None
     ws.merge_cells(val_ref)
     vc = ws.cell(row=row, column=col)
     vc.value = formula
-    vc.font = Font(bold=True, size=22, color=WHITE_HEX[2:])
+    vc.font = Font(bold=True, size=22, color=_hex_font_color(WHITE_HEX))
     vc.fill = fill(bg)
     vc.alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[row].height = 40
@@ -692,7 +700,8 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsx") -> None:
     build_data_quality(wb)
     build_dashboard(wb)
 
-    # Re-order sheets for usability
+    # Re-order sheets for usability.
+    # Iterates desired order; skips any sheet not present to avoid KeyError.
     desired_order = [
         "DASHBOARD", "CONFIG",
         "IN_PACKED", "IN_HRP", "IN_SHIPPED_LPNS", "IN_STAFFING", "IN_TARGETS_DAILY",
@@ -700,9 +709,15 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsx") -> None:
         "ACTION_HRP", "ACTION_PACKED",
         "HISTORY", "DATA_QUALITY"
     ]
+    missing = [n for n in desired_order if n not in wb.sheetnames]
+    if missing:
+        print(f"Warning: the following sheets are missing and will be skipped in reordering: {missing}")
     for idx, name in enumerate(desired_order):
-        if name in wb.sheetnames:
-            wb.move_sheet(name, offset=wb.sheetnames.index(name) - idx)
+        if name not in wb.sheetnames:
+            continue
+        current_pos = wb.sheetnames.index(name)
+        if current_pos != idx:
+            wb.move_sheet(name, offset=current_pos - idx)
 
     wb.save(output_path)
     print(f"Workbook saved: {output_path}")

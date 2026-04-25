@@ -19,6 +19,9 @@ Private Const COL_HEADER  As Long = 1644912   ' #191970 (midnight blue)
 Private Const COL_WHITE   As Long = 16777215  ' #FFFFFF
 Private Const COL_LGREY   As Long = 15921906  ' #F2F2F2
 Private Const UNPROTECT_PW As String = "KPI2024"
+' NOTE: This password is intentionally visible in the source code.
+' It is a shared workbook protection password documented for all operators
+' (not a user authentication credential). Change the constant value if required.
 
 '================================================================================
 ' ENTRY POINT
@@ -760,7 +763,7 @@ Private Sub BuildDATA_QUALITY(wb As Workbook)
     Dim r As Integer
     For r = 0 To 8
         ws.Cells(r + 4, 1).Value = checks(r, 0)
-        ws.Cells(r + 4, 2).Value = "'" & checks(r, 1)   ' store formula text
+        ws.Cells(r + 4, 2).Value = "'" & checks(r, 1)   ' leading apostrophe forces Excel to store as display text, not an evaluated formula
         ws.Cells(r + 4, 3).Formula = checks(r, 1)        ' also evaluate
         ws.Cells(r + 4, 4).Formula = _
             "=IF(C" & (r + 4) & "=0,""OK"",IF(C" & (r + 4) & ">0,""WARNING"",""OK""))"
@@ -916,6 +919,8 @@ Private Sub ReorderSheets(wb As Workbook)
     order = Split("DASHBOARD,CONFIG,IN_PACKED,IN_HRP,IN_SHIPPED_LPNS,IN_STAFFING,IN_TARGETS_DAILY,T_DISPATCH_KPI,T_DISPATCH_DAILY,ACTION_HRP,ACTION_PACKED,HISTORY,DATA_QUALITY", ",")
     Dim i As Integer
     For i = 0 To UBound(order)
+        ' On Error Resume Next suppresses errors for sheets that don't exist yet;
+        ' the loop continues gracefully so no valid sheet move is blocked.
         On Error Resume Next
         wb.Worksheets(order(i)).Move Before:=wb.Worksheets(i + 1)
         On Error GoTo 0
