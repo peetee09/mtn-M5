@@ -1193,9 +1193,11 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsm") -> None:
         if current_pos != idx:
             wb.move_sheet(name, offset=idx - current_pos)
 
-    wb.save(output_path)
-    if wb.vba_archive is not None:
-        wb.vba_archive.close()
+    try:
+        wb.save(output_path)
+    finally:
+        if wb.vba_archive is not None:
+            wb.vba_archive.close()
     print(f"Workbook saved: {output_path}")
     print(f"Unprotect password: {UNPROTECT_PW}")
     print("\nSheets created:")
