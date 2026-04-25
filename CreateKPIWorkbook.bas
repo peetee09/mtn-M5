@@ -1275,12 +1275,12 @@ Private Sub BuildCHARTS(wb As Workbook)
         .HasTitle = True
         .ChartTitle.Text = "Shipped vs Expected Cartons per Shift"
         .SeriesCollection.NewSeries
-        .SeriesCollection(1).Values  = wsKPI.Range("C:C")
-        .SeriesCollection(1).XValues = wsKPI.Range("A:A")
+        .SeriesCollection(1).Values  = wsKPI.Range("C2:C1048576")
+        .SeriesCollection(1).XValues = wsKPI.Range("B2:B1048576")
         .SeriesCollection(1).Name    = "Shipped"
         .SeriesCollection.NewSeries
-        .SeriesCollection(2).Values  = wsKPI.Range("F:F")
-        .SeriesCollection(2).XValues = wsKPI.Range("A:A")
+        .SeriesCollection(2).Values  = wsKPI.Range("F2:F1048576")
+        .SeriesCollection(2).XValues = wsKPI.Range("B2:B1048576")
         .SeriesCollection(2).Name    = "Expected"
         .Axes(xlValue).HasTitle = True
         .Axes(xlValue).AxisTitle.Text = "Cartons"
