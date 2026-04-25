@@ -14,14 +14,15 @@ Usage:
 
 Note on macros:
     openpyxl cannot embed VBA code.  The output file is saved as .xlsm
-    (macro-enabled workbook) with wb.is_macro_workbook = True so that
-    openpyxl writes the correct OOXML content type for xlsm.  The file
-    contains NO macro code.  To get working buttons and the RefreshAll /
-    TakeDailySnapshot macros, open the generated file in Excel, paste
-    CreateKPIWorkbook.bas into the VBA editor (Alt+F11 > Insert > Module),
-    and save.  Alternatively, run CreateKPIWorkbook.bas directly from the
-    VBA editor inside an xlsm-hosted workbook — that path both builds and
-    saves the file with macros fully embedded.
+    (macro-enabled workbook) by attaching a minimal wb.vba_archive stub
+    so openpyxl writes the correct OOXML content types/package structure
+    for xlsm output.  The file contains NO usable macro code.  To get
+    working buttons and the RefreshAll / TakeDailySnapshot macros, open
+    the generated file in Excel, paste CreateKPIWorkbook.bas into the VBA
+    editor (Alt+F11 > Insert > Module), and save.  Alternatively, run
+    CreateKPIWorkbook.bas directly from the VBA editor inside an
+    xlsm-hosted workbook — that path both builds and saves the file with
+    macros fully embedded.
 
 Compatibility: Excel 2016 and later.
 Unprotect password: KPI2024
