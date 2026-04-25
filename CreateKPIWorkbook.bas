@@ -762,6 +762,8 @@ Private Sub BuildDATA_QUALITY(wb As Workbook)
         ws.Cells(r + 4, 1).Value = checks(r, 0)
         ws.Cells(r + 4, 2).Value = "'" & checks(r, 1)   ' leading apostrophe forces Excel to store as display text, not an evaluated formula
         ws.Cells(r + 4, 3).Formula = checks(r, 1)        ' also evaluate
+        ' All Result formulas (COUNTIF / SUMPRODUCT) return 0 or a positive integer —
+        ' they can never return a negative value — so 0 = OK and >0 = WARNING.
         ws.Cells(r + 4, 4).Formula = _
             "=IF(C" & (r + 4) & "=0,""OK"",""WARNING"")"
 
@@ -838,8 +840,10 @@ Private Sub BuildDASHBOARD(wb As Workbook)
         "=COUNTIF(tblHRP[IncludeInHRP],TRUE)", COL_RED)
     Call MakeKPICard(ws, 5, 6, "PACKED OVERDUE", _
         "=COUNTIF(tblPacked[ActionFlag],TRUE)", COL_RED)
-    ' Fixed: INDEX/MATCH returns #N/A (-> "N/A") when no today data;
-    ' old SUMIF returned 0 and displayed "0.0%" when there was no data.
+    ' Fixed: INDEX/MATCH raises #N/A when no row in tblDispatchDaily matches
+    ' today's date, which IFERROR catches and displays as "N/A".  The previous
+    ' SUMIF returned 0 for an unmatched date, causing TEXT to show "0.0%"
+    ' (a misleading result when no data has been entered for today).
     Call MakeKPICard(ws, 5, 10, "DISPATCH PERF TODAY", _
         "=IFERROR(TEXT(INDEX(tblDispatchDaily[DailyPerformancePct]," & _
         "MATCH(TODAY(),tblDispatchDaily[BusinessDate],0)),""0.0%""),""N/A"")", _
@@ -1113,29 +1117,29 @@ Private Sub AddButtons(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets("DASHBOARD")
 
-    ' Calculate the approximate pixel top of row 28 by summing row heights above it.
-    ' Each unit of RowHeight ≈ 0.75 points ≈ 1 pixel at 96 dpi.
-    ' Rows 1-27 sum: 36+18+6+20+18+42+8+8+18+42+8+8+8+20+16+14+14+14+8+20+16+14+8+20+16+8+20 = 546
-    Const BTN_TOP  As Long = 546
-    Const BTN_H    As Long = 30
+    ' Use Rows(28).Top to get the exact pixel position of row 28 dynamically,
+    ' so this remains correct if any row heights above it change.
+    Dim btnTop As Double
+    btnTop = ws.Rows(28).Top
+    Const BTN_H As Long = 30
 
     ' Refresh All button
     Dim btn1 As Button
-    Set btn1 = ws.Buttons.Add(10, BTN_TOP, 140, BTN_H)
+    Set btn1 = ws.Buttons.Add(10, btnTop, 140, BTN_H)
     btn1.Caption = "REFRESH ALL"
     btn1.OnAction = "RefreshAll"
     btn1.Font.Bold = True
 
     ' Take Daily Snapshot button
     Dim btn2 As Button
-    Set btn2 = ws.Buttons.Add(170, BTN_TOP, 200, BTN_H)
+    Set btn2 = ws.Buttons.Add(170, btnTop, 200, BTN_H)
     btn2.Caption = "TAKE DAILY SNAPSHOT"
     btn2.OnAction = "TakeDailySnapshot"
     btn2.Font.Bold = True
 
     ' Populate Action Sheets button
     Dim btn3 As Button
-    Set btn3 = ws.Buttons.Add(390, BTN_TOP, 200, BTN_H)
+    Set btn3 = ws.Buttons.Add(390, btnTop, 200, BTN_H)
     btn3.Caption = "POPULATE ACTION SHEETS"
     btn3.OnAction = "PopulateActionSheets"
     btn3.Font.Bold = True

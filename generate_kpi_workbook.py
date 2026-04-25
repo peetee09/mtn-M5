@@ -280,6 +280,8 @@ def build_in_hrp(wb: Workbook) -> None:
     ws.add_data_validation(dv_ack)
 
     # CF: IncludeInHRP = TRUE  (column calc_start+2)
+    # formula=["TRUE"] generates <formula>TRUE</formula> in XML, which Excel
+    # evaluates as the boolean constant TRUE (not the text string "TRUE").
     inc_col = col_letter(calc_start + 2)
     ws.conditional_formatting.add(
         f"{inc_col}2:{inc_col}10000",
@@ -614,11 +616,11 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
               formula="=COUNTIF(tblHRP[IncludeInHRP],TRUE)", accent=RED_HEX)
     _kpi_card(ws, row=5, col=6, title="PACKED OVERDUE",
               formula="=COUNTIF(tblPacked[ActionFlag],TRUE)", accent=RED_HEX)
-    # Fixed formula: INDEX/MATCH returns #N/A (→ "N/A") when no data today,
-    # whereas the old SUMIF returned 0 (showing "0.0%" when there is no data).
+    # Fixed formula: INDEX/MATCH returns #N/A (→ "N/A" via IFERROR) when no row
+    # matches today's date in tblDispatchDaily.  The previous SUMIF returned 0,
+    # which TEXT() formatted as "0.0%" — a misleading result when no data existed.
     _kpi_card(ws, row=5, col=10, title="DISPATCH PERF TODAY",
-              formula='=IFERROR(TEXT(INDEX(tblDispatchDaily[DailyPerformancePct],'
-                      'MATCH(TODAY(),tblDispatchDaily[BusinessDate],0)),"0.0%"),"N/A")',
+              formula='=IFERROR(TEXT(INDEX(tblDispatchDaily[DailyPerformancePct],MATCH(TODAY(),tblDispatchDaily[BusinessDate],0)),"0.0%"),"N/A")',
               accent=BLUE_HEX)
 
     # ── Rows 9-12: KPI cards — operations row ────────────────────────────────
