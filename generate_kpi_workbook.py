@@ -19,16 +19,14 @@ Unprotect password: KPI2024
 from __future__ import annotations
 
 import datetime
-from typing import List, Optional
+from typing import List
 
 from openpyxl import Workbook
 from openpyxl.styles import (
-    Font, PatternFill, Alignment, Border, Side, numbers
+    Font, PatternFill, Alignment, Border, Side
 )
 from openpyxl.styles.differential import DifferentialStyle
-from openpyxl.formatting.rule import (
-    ColorScaleRule, DataBarRule, FormulaRule, Rule
-)
+from openpyxl.formatting.rule import FormulaRule, Rule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -36,14 +34,23 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 # ---------------------------------------------------------------------------
 # Colour helpers
 # ---------------------------------------------------------------------------
-GREEN_HEX  = "FF50C878"
-AMBER_HEX  = "FFFFA500"
-RED_HEX    = "FFFF0000"
-HEADER_HEX = "FF191970"   # midnight blue
-WHITE_HEX  = "FFFFFFFF"
-LGREY_HEX  = "FFF2F2F2"
-DARK_HEX   = "FF1E1E1E"
-BLUE_HEX   = "FF0070C0"
+GREEN_HEX   = "FF50C878"
+AMBER_HEX   = "FFFFA500"
+RED_HEX     = "FFFF0000"
+HEADER_HEX  = "FF191970"   # midnight blue
+WHITE_HEX   = "FFFFFFFF"
+LGREY_HEX   = "FFF2F2F2"
+BLUE_HEX    = "FF0070C0"
+
+# Dashboard / Excel-style palette
+PAGE_BG_HEX  = "FFF2F2F2"   # very light grey page background
+CARD_BG_HEX  = "FFFFFFFF"   # white card value area
+SECN_HEX     = "FF2E4057"   # dark slate for section header bars
+NAV_HEX      = "FF595959"   # dark grey for navigation bar
+STEEL_HEX    = "FF4472C4"   # standard Excel blue for RAG legend bar
+TEXT_DK_HEX  = "FF333333"   # near-black body text
+TEXT_MD_HEX  = "FF666666"   # medium grey labels
+LGREY2_HEX   = "FFD9D9D9"   # thin border grey
 
 UNPROTECT_PW = "KPI2024"
 # NOTE: This password is intentionally visible in the source code.
@@ -165,8 +172,7 @@ def build_config(wb: Workbook) -> None:
 
     add_table(ws, "E4:E7", "tblConfig_Areas", "TableStyleMedium2")
 
-    for col in ws.columns:
-        ws.column_dimensions[col[0].column_letter].auto_size = True
+    _autofit(ws)
 
 
 def build_in_packed(wb: Workbook) -> None:
@@ -277,7 +283,7 @@ def build_in_hrp(wb: Workbook) -> None:
     inc_col = col_letter(calc_start + 2)
     ws.conditional_formatting.add(
         f"{inc_col}2:{inc_col}10000",
-        Rule(type="cellIs", operator="equal", formula=['"TRUE"'],
+        Rule(type="cellIs", operator="equal", formula=["TRUE"],
              dxf=DifferentialStyle(fill=fill(RED_HEX), font=Font(color=_hex_font_color(WHITE_HEX))))
     )
 
@@ -305,7 +311,7 @@ def build_in_shipped(wb: Workbook) -> None:
     # CF: DupFlag = TRUE
     ws.conditional_formatting.add(
         "F2:F10000",
-        Rule(type="cellIs", operator="equal", formula=['"TRUE"'],
+        Rule(type="cellIs", operator="equal", formula=["TRUE"],
              dxf=DifferentialStyle(fill=fill(AMBER_HEX)))
     )
 
@@ -561,103 +567,283 @@ def build_data_quality(wb: Workbook) -> None:
     _autofit(ws)
 
 
-def build_dashboard(wb: Workbook) -> None:
+def build_dashboard(wb: Workbook) -> None:  # noqa: C901
     ws = wb.create_sheet("DASHBOARD")
     ws.sheet_properties.tabColor = "0070C0"
 
-    # Dark background
-    for row in ws.iter_rows(min_row=1, max_row=60, min_col=1, max_col=14):
-        for cell in row:
-            cell.fill = fill(DARK_HEX)
-            cell.font = Font(color=_hex_font_color(WHITE_HEX))
+    # Light-grey page background (Excel-style)
+    for r in ws.iter_rows(min_row=1, max_row=40, min_col=1, max_col=14):
+        for cell in r:
+            cell.fill = fill(PAGE_BG_HEX)
+            cell.font = Font(color=_hex_font_color(TEXT_DK_HEX))
 
-    # Title
+    # ── Row 1: Title bar ──────────────────────────────────────────────────────
     ws.merge_cells("A1:N1")
-    title_cell = ws["A1"]
-    title_cell.value = "WAREHOUSE / DISPATCH KPI DASHBOARD"
-    title_cell.font = Font(bold=True, size=18, color=_hex_font_color(WHITE_HEX))
-    title_cell.fill = fill(HEADER_HEX)
-    title_cell.alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[1].height = 30
+    tc = ws["A1"]
+    tc.value = "WAREHOUSE / DISPATCH KPI DASHBOARD"
+    tc.font = Font(bold=True, size=18, color=_hex_font_color(WHITE_HEX))
+    tc.fill = fill(HEADER_HEX)
+    tc.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 36
 
-    ws["A2"] = "Last Refreshed:"
-    ws["B2"].value = f'=TEXT(NOW(),"dd/mm/yyyy hh:mm")'
-    ws["B2"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+    # ── Row 2: Meta / last-refreshed bar ─────────────────────────────────────
+    SUBTITLE_BG = "FFECF0F7"
+    ws.merge_cells("A2:C2")
+    _cell(ws, 2, 1, "Last Refreshed:", Font(bold=True, size=9,
+          color=_hex_font_color(TEXT_MD_HEX)), fill(SUBTITLE_BG),
+          Alignment(horizontal="right", vertical="center"))
+    ws.merge_cells("D2:G2")
+    _cell(ws, 2, 4, '=TEXT(NOW(),"dd/mm/yyyy hh:mm")',
+          Font(bold=True, size=9, color=_hex_font_color(BLUE_HEX)),
+          fill(SUBTITLE_BG), Alignment(horizontal="left", vertical="center"))
+    ws.merge_cells("H2:N2")
+    _cell(ws, 2, 8, "Warehouse / Dispatch KPI System  v0.0.1-beta",
+          Font(italic=True, size=9, color=_hex_font_color(TEXT_MD_HEX)),
+          fill(SUBTITLE_BG), Alignment(horizontal="right", vertical="center"))
+    ws.row_dimensions[2].height = 18
 
-    # KPI Cards
-    _kpi_card(ws, row=4, col=2, title="HRP OPEN ITEMS",
-              formula="=COUNTIF(tblHRP[IncludeInHRP],TRUE)", bg=RED_HEX)
-    _kpi_card(ws, row=4, col=6, title="PACKED OVERDUE",
-              formula="=COUNTIF(tblPacked[ActionFlag],TRUE)", bg=RED_HEX)
-    _kpi_card(ws, row=4, col=10, title="DISPATCH PERF TODAY",
-              formula='=IFERROR(TEXT(SUMIF(tblDispatchDaily[BusinessDate],TODAY(),tblDispatchDaily[DailyPerformancePct]),"0.0%"),"N/A")',
-              bg=BLUE_HEX)
+    # Row 3: thin visual spacer
+    ws.row_dimensions[3].height = 6
+
+    # ── Row 4: Section header "KPI OVERVIEW" ─────────────────────────────────
+    _section_header(ws, 4, "  KPI OVERVIEW", SECN_HEX)
+    ws.row_dimensions[4].height = 20
+
+    # ── Rows 5-8: KPI cards — attention / alert row ───────────────────────────
+    _kpi_card(ws, row=5, col=2, title="HRP OPEN ITEMS",
+              formula="=COUNTIF(tblHRP[IncludeInHRP],TRUE)", accent=RED_HEX)
+    _kpi_card(ws, row=5, col=6, title="PACKED OVERDUE",
+              formula="=COUNTIF(tblPacked[ActionFlag],TRUE)", accent=RED_HEX)
+    # Fixed formula: INDEX/MATCH returns #N/A (→ "N/A") when no data today,
+    # whereas the old SUMIF returned 0 (showing "0.0%" when there is no data).
+    _kpi_card(ws, row=5, col=10, title="DISPATCH PERF TODAY",
+              formula='=IFERROR(TEXT(INDEX(tblDispatchDaily[DailyPerformancePct],'
+                      'MATCH(TODAY(),tblDispatchDaily[BusinessDate],0)),"0.0%"),"N/A")',
+              accent=BLUE_HEX)
+
+    # ── Rows 9-12: KPI cards — operations row ────────────────────────────────
     _kpi_card(ws, row=9, col=2, title="DUPLICATE LPNs",
-              formula="=COUNTIF(tblShipped[DupFlag],TRUE)", bg=AMBER_HEX)
+              formula="=COUNTIF(tblShipped[DupFlag],TRUE)", accent=AMBER_HEX)
     _kpi_card(ws, row=9, col=6, title="STAFF TODAY",
               formula="=SUMIF(tblDispatchKPI[BusinessDate],TODAY(),tblDispatchKPI[TotalStaff])",
-              bg=BLUE_HEX)
+              accent=BLUE_HEX)
     _kpi_card(ws, row=9, col=10, title="CARTONS SHIPPED TODAY",
               formula="=SUMIF(tblDispatchKPI[BusinessDate],TODAY(),tblDispatchKPI[ShippedCartons])",
-              bg=BLUE_HEX)
+              accent=GREEN_HEX)
 
-    # Instructions
-    ws["A14"] = "CHARTS AREA"
-    ws["A14"].font = Font(bold=True, size=12, color=_hex_font_color(WHITE_HEX))
-    ws["A14"].fill = fill(DARK_HEX)
+    # Row 13: spacer
+    ws.row_dimensions[13].height = 8
 
-    ws["A15"] = ("After adding data to the input sheets, use the 'Refresh All' button "
-                 "to update PivotTables and charts.")
-    ws["A15"].font = Font(italic=True, color="C8C8C8")
-    ws["A15"].fill = fill(DARK_HEX)
+    # ── Row 14: Section header "PERFORMANCE SUMMARY" ─────────────────────────
+    _section_header(ws, 14, "  PERFORMANCE SUMMARY  (Most Recent Shifts)", SECN_HEX)
+    ws.row_dimensions[14].height = 20
 
-    ws["A17"] = "FILTER GUIDE:"
-    ws["A17"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
-    ws["A17"].fill = fill(DARK_HEX)
-    ws["A18"] = "Use Excel AutoFilter on T_DISPATCH_KPI for ShiftName / BusinessDate / RAG filters."
-    ws["A18"].fill = fill(DARK_HEX)
-    ws["A19"] = "For pivot-based slicers: Insert PivotTable from tblDispatchKPI, then Insert > Slicer."
-    ws["A19"].fill = fill(DARK_HEX)
+    # Row 15: table column headers
+    perf_hdrs = ["Date", "Shift", "Shipped", "Expected", "Perf %", "RAG"]
+    for ci, hdr in enumerate(perf_hdrs, start=1):
+        c = ws.cell(row=15, column=ci, value=hdr)
+        c.font = Font(bold=True, size=9, color=_hex_font_color(WHITE_HEX))
+        c.fill = fill(BLUE_HEX)
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = thin_border()
+    ws.row_dimensions[15].height = 16
 
-    # Instruction note about buttons
-    ws["A21"] = "BUTTONS (add manually or run the VBA RefreshAll / TakeDailySnapshot macros):"
-    ws["A21"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
-    ws["A21"].fill = fill(DARK_HEX)
+    # Rows 16-18: 3 most-recent rows from tblDispatchKPI (newest first)
+    #   ROWS(tblDispatchKPI[BusinessDate]) gives total row count;
+    #   subtracting 0/1/2 offsets yields the last three rows.
+    for row_off in range(3):
+        rn = 16 + row_off
+        idx_expr = f"ROWS(tblDispatchKPI[BusinessDate])-{row_off}"
+        row_data = [
+            f'=IFERROR(TEXT(INDEX(tblDispatchKPI[BusinessDate],{idx_expr}),"dd/mm/yyyy"),"")',
+            f'=IFERROR(INDEX(tblDispatchKPI[ShiftName],{idx_expr}),"")',
+            f'=IFERROR(INDEX(tblDispatchKPI[ShippedCartons],{idx_expr}),"")',
+            f'=IFERROR(INDEX(tblDispatchKPI[ExpectedCartons],{idx_expr}),"")',
+            f'=IFERROR(TEXT(INDEX(tblDispatchKPI[PerformancePct],{idx_expr}),"0.0%"),"")',
+            f'=IFERROR(INDEX(tblDispatchKPI[RAG],{idx_expr}),"")',
+        ]
+        row_bg = CARD_BG_HEX if row_off % 2 == 0 else "FFF7F7F7"
+        for ci, fml in enumerate(row_data, start=1):
+            c = ws.cell(row=rn, column=ci, value=fml)
+            c.font = Font(size=9, color=_hex_font_color(TEXT_DK_HEX))
+            c.fill = fill(row_bg)
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.border = thin_border()
+        # RAG conditional formatting for column F (col index 6)
+        rag_ref = f"F{rn}"
+        for text, hex_c, fnt in [
+            ("Green", GREEN_HEX, Font(color=_hex_font_color(WHITE_HEX))),
+            ("Amber", AMBER_HEX, Font(color=_hex_font_color(TEXT_DK_HEX))),
+            ("Red",   RED_HEX,   Font(bold=True, color=_hex_font_color(WHITE_HEX))),
+        ]:
+            ws.conditional_formatting.add(
+                rag_ref,
+                Rule(type="containsText", operator="containsText", text=text,
+                     dxf=DifferentialStyle(fill=fill(hex_c), font=fnt))
+            )
+        ws.row_dimensions[rn].height = 14
 
-    button_notes = [
-        "REFRESH ALL             -> Recalculates all formulas & refreshes PivotTables",
-        "TAKE DAILY SNAPSHOT     -> Appends current KPIs to the HISTORY sheet",
-        "POPULATE ACTION SHEETS  -> Copies filtered data to ACTION_HRP and ACTION_PACKED",
+    # Row 19: spacer
+    ws.row_dimensions[19].height = 8
+
+    # ── Row 20: Section header "RAG LEGEND" ───────────────────────────────────
+    _section_header(ws, 20, "  RAG LEGEND", STEEL_HEX)
+    ws.row_dimensions[20].height = 20
+
+    # Row 21: legend colour blocks
+    legend = [
+        (2, "GREEN",  GREEN_HEX,  "Dispatch Performance >= 100%"),
+        (6, "AMBER",  AMBER_HEX,  "Dispatch Performance >= 90% and < 100%"),
+        (10, "RED",   RED_HEX,    "Dispatch Performance < 90%"),
     ]
-    for r_off, note in enumerate(button_notes, start=22):
-        cell = ws.cell(row=r_off, column=1, value=note)
-        cell.font = Font(italic=True, color="C8C8C8")
-        cell.fill = fill(DARK_HEX)
+    for start_c, label, hex_c, desc in legend:
+        end_c = start_c + 2
+        ws.merge_cells(f"{col_letter(start_c)}21:{col_letter(end_c)}21")
+        lc = ws.cell(row=21, column=start_c, value=label)
+        lc.font = Font(bold=True, size=9, color=_hex_font_color(WHITE_HEX))
+        lc.fill = fill(hex_c)
+        lc.alignment = Alignment(horizontal="center", vertical="center")
+        lc.border = thin_border()
 
-    for col_idx in range(1, 15):
-        ws.column_dimensions[col_letter(col_idx)].width = 16
+        ws.merge_cells(f"{col_letter(start_c)}22:{col_letter(end_c)}22")
+        dc = ws.cell(row=22, column=start_c, value=desc)
+        dc.font = Font(italic=True, size=8, color=_hex_font_color(TEXT_MD_HEX))
+        dc.fill = fill(PAGE_BG_HEX)
+        dc.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[21].height = 16
+    ws.row_dimensions[22].height = 14
+
+    # Row 23: spacer
+    ws.row_dimensions[23].height = 8
+
+    # ── Row 24: Section header "QUICK NAVIGATION" ─────────────────────────────
+    _section_header(ws, 24, "  QUICK NAVIGATION", NAV_HEX)
+    ws.row_dimensions[24].height = 20
+
+    # Row 25: navigation hyperlinks
+    nav_links = [
+        (1,  "IN_PACKED",         "#IN_PACKED!A1",         "004EA8"),
+        (3,  "IN_HRP",            "#IN_HRP!A1",            "004EA8"),
+        (5,  "IN_SHIPPED_LPNS",   "#IN_SHIPPED_LPNS!A1",   "006400"),
+        (7,  "IN_STAFFING",       "#IN_STAFFING!A1",       "006400"),
+        (9,  "T_DISPATCH_KPI",    "#T_DISPATCH_KPI!A1",    "8B6914"),
+        (11, "DATA_QUALITY",      "#DATA_QUALITY!A1",      "8B6914"),
+        (13, "HISTORY",           "#HISTORY!A1",           "595959"),
+    ]
+    for ci, label, target, fc in nav_links:
+        nc = ws.cell(row=25, column=ci, value=f">> {label}")
+        nc.hyperlink = target
+        nc.font = Font(bold=True, size=8, underline="single",
+                       color=f"FF{fc}")
+        nc.fill = fill(CARD_BG_HEX)
+        nc.alignment = Alignment(horizontal="center", vertical="center")
+        nc.border = thin_border()
+    ws.row_dimensions[25].height = 16
+
+    # Row 26: spacer
+    ws.row_dimensions[26].height = 8
+
+    # ── Row 27: Section header "CONTROLS" ────────────────────────────────────
+    _section_header(ws, 27, "  CONTROLS  (VBA macro buttons — run from Developer tab if needed)",
+                    HEADER_HEX)
+    ws.row_dimensions[27].height = 20
+
+    # Row 28: button descriptions
+    btns = [
+        (2,  "[ REFRESH ALL ]",            "Recalculates all formulas & refreshes PivotTables"),
+        (6,  "[ TAKE DAILY SNAPSHOT ]",    "Appends current KPIs to the HISTORY sheet"),
+        (10, "[ POPULATE ACTION SHEETS ]", "Copies filtered data to ACTION_HRP and ACTION_PACKED"),
+    ]
+    for ci, bname, bdesc in btns:
+        ws.merge_cells(f"{col_letter(ci)}28:{col_letter(ci + 2)}28")
+        bc = ws.cell(row=28, column=ci, value=bname)
+        bc.font = Font(bold=True, size=9, color=_hex_font_color(HEADER_HEX))
+        bc.fill = fill("FFFFF4CC")   # light yellow — mimics a button
+        bc.alignment = Alignment(horizontal="center", vertical="center")
+        bc.border = thin_border()
+
+        ws.merge_cells(f"{col_letter(ci)}29:{col_letter(ci + 2)}29")
+        dc = ws.cell(row=29, column=ci, value=bdesc)
+        dc.font = Font(italic=True, size=8, color=_hex_font_color(TEXT_MD_HEX))
+        dc.fill = fill(PAGE_BG_HEX)
+        dc.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[28].height = 18
+    ws.row_dimensions[29].height = 24
+
+    # ── Column widths ─────────────────────────────────────────────────────────
+    # Col A = narrow left margin; B–N = even card-column width
+    ws.column_dimensions["A"].width = 2
+    for ci in range(2, 15):
+        ws.column_dimensions[col_letter(ci)].width = 15
 
 
-def _kpi_card(ws, row: int, col: int, title: str, formula: str, bg: str) -> None:
-    """Write a 3-wide × 3-tall KPI card (title above, value below)."""
-    # Title row (row - 1)
-    title_row = row - 1
-    title_ref = f"{col_letter(col)}{title_row}:{col_letter(col + 2)}{title_row}"
-    ws.merge_cells(title_ref)
-    tc = ws.cell(row=title_row, column=col, value=title)
-    tc.font = Font(bold=True, size=9, color="C8C8C8")
-    tc.fill = fill("FF323232")
-    tc.alignment = Alignment(horizontal="center")
+# ---------------------------------------------------------------------------
+# Dashboard helper functions
+# ---------------------------------------------------------------------------
 
-    # Value cells
-    val_ref = f"{col_letter(col)}{row}:{col_letter(col + 2)}{row + 2}"
-    ws.merge_cells(val_ref)
-    vc = ws.cell(row=row, column=col)
-    vc.value = formula
-    vc.font = Font(bold=True, size=22, color=_hex_font_color(WHITE_HEX))
-    vc.fill = fill(bg)
+def _cell(ws, row: int, col: int, value, font, cell_fill, alignment) -> None:
+    """Write a value + style to a single cell."""
+    c = ws.cell(row=row, column=col, value=value)
+    c.font = font
+    c.fill = cell_fill
+    c.alignment = alignment
+
+
+def _section_header(ws, row: int, text: str, bg: str) -> None:
+    """Full-width (A:N) section header bar."""
+    ws.merge_cells(f"A{row}:N{row}")
+    c = ws[f"A{row}"]
+    c.value = text
+    c.font = Font(bold=True, size=11, color=_hex_font_color(WHITE_HEX))
+    c.fill = fill(bg)
+    c.alignment = Alignment(horizontal="left", vertical="center")
+
+
+def _kpi_card(ws, row: int, col: int, title: str, formula: str,
+              accent: str) -> None:
+    """Excel-style KPI card: coloured title bar (1 row) + white value area (3 rows).
+
+    Layout (4 rows total starting at *row*):
+      row   – coloured accent bar with white title label
+      row+1 – ┐
+      row+2 – ┤ merged value cell: large coloured number
+      row+3 – ┘
+    Each card is 3 columns wide.
+    """
+    CARD_W = 3
+    end_col = col + CARD_W - 1
+    thin = Side(style="thin", color=accent[2:])   # accent-coloured thin border
+
+    # Title bar
+    ws.merge_cells(f"{col_letter(col)}{row}:{col_letter(end_col)}{row}")
+    tc = ws.cell(row=row, column=col, value=title)
+    tc.font = Font(bold=True, size=9, color=_hex_font_color(WHITE_HEX))
+    tc.fill = fill(accent)
+    tc.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[row].height = 18
+
+    # Value area
+    ws.merge_cells(f"{col_letter(col)}{row+1}:{col_letter(end_col)}{row+3}")
+    vc = ws.cell(row=row + 1, column=col, value=formula)
+    vc.font = Font(bold=True, size=24, color=_hex_font_color(accent))
+    vc.fill = fill(CARD_BG_HEX)
     vc.alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[row].height = 40
+    ws.row_dimensions[row + 1].height = 42
+    ws.row_dimensions[row + 2].height = 8
+    ws.row_dimensions[row + 3].height = 8
+
+    # Accent-coloured border around the whole card
+    for r in range(row, row + 4):
+        for c in range(col, end_col + 1):
+            left_side  = thin if c == col     else None
+            right_side = thin if c == end_col else None
+            top_side   = thin if r == row     else None
+            bot_side   = thin if r == row + 3 else None
+            if any([left_side, right_side, top_side, bot_side]):
+                ws.cell(row=r, column=c).border = Border(
+                    left=left_side, right=right_side,
+                    top=top_side, bottom=bot_side
+                )
 
 
 def _autofit(ws) -> None:
@@ -717,7 +903,7 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsx") -> None:
             continue
         current_pos = wb.sheetnames.index(name)
         if current_pos != idx:
-            wb.move_sheet(name, offset=current_pos - idx)
+            wb.move_sheet(name, offset=idx - current_pos)
 
     wb.save(output_path)
     print(f"Workbook saved: {output_path}")
