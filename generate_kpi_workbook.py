@@ -724,16 +724,18 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
 
     # Row 25: navigation hyperlinks
     nav_links = [
-        (1,  "IN_PACKED",         "#IN_PACKED!A1",         "004EA8"),
-        (3,  "IN_HRP",            "#IN_HRP!A1",            "004EA8"),
-        (5,  "IN_SHIPPED_LPNS",   "#IN_SHIPPED_LPNS!A1",   "006400"),
-        (7,  "IN_STAFFING",       "#IN_STAFFING!A1",       "006400"),
-        (9,  "T_DISPATCH_KPI",    "#T_DISPATCH_KPI!A1",    "8B6914"),
-        (11, "DATA_QUALITY",      "#DATA_QUALITY!A1",      "8B6914"),
-        (13, "HISTORY",           "#HISTORY!A1",           "595959"),
+        (2,  "IN_PACKED",         "#IN_PACKED!A1",         "004EA8"),
+        (4,  "IN_HRP",            "#IN_HRP!A1",            "004EA8"),
+        (6,  "IN_SHIPPED_LPNS",   "#IN_SHIPPED_LPNS!A1",   "006400"),
+        (8,  "IN_STAFFING",       "#IN_STAFFING!A1",       "006400"),
+        (10, "T_DISPATCH_KPI",    "#T_DISPATCH_KPI!A1",    "8B6914"),
+        (12, "DATA_QUALITY",      "#DATA_QUALITY!A1",      "8B6914"),
+        (14, "HISTORY",           "#HISTORY!A1",           "595959"),
     ]
-    for ci, label, target, fc in nav_links:
-        nc = ws.cell(row=25, column=ci, value=f">> {label}")
+    for start_ci, label, target, fc in nav_links:
+        end_ci = start_ci + 1
+        ws.merge_cells(f"{col_letter(start_ci)}25:{col_letter(end_ci)}25")
+        nc = ws.cell(row=25, column=start_ci, value=f">> {label}")
         nc.hyperlink = target
         nc.font = Font(bold=True, size=8, underline="single",
                        color=f"FF{fc}")
