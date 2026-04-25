@@ -676,7 +676,7 @@ def build_charts(wb: Workbook) -> None:
     chart2.series[0].graphicalProperties.solidFill = BLUE_HEX[2:]
     chart2.series[1].graphicalProperties.solidFill = GREEN_HEX[2:]
 
-    cats2 = Reference(ws_kpi, min_col=1, min_row=2, max_row=500)
+    cats2 = Reference(ws_kpi, min_col=2, min_row=2, max_row=500)    # ShiftName
     chart2.set_categories(cats2)
 
     ws.add_chart(chart2, "M3")
