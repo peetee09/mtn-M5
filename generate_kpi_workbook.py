@@ -386,10 +386,11 @@ def build_in_audit_log(wb: Workbook) -> None:
 
     dv_area = DataValidation(
         type="list",
-        # openpyxl data validation does not support cross-sheet structured references
-        # (=CONFIG!$E$5:$E$7 is unreliable in the OOXML data-validation XML), so the
-        # area list is duplicated here as an inline string.  Keep this in sync with
-        # the tblConfig_Areas values in build_config().
+        # Cross-sheet structured references for data validation are the unreliable
+        # form here. The stable explicit reference is an absolute range such as
+        # =CONFIG!$E$5:$E$7 (used by the VBA implementation), but this openpyxl
+        # path keeps the area list inline for compatibility. Keep these values in
+        # sync with tblConfig_Areas in build_config().
         formula1='"Auditing,Manual handover,Dispatch sealing"',
         allow_blank=True, showDropDown=False
     )
