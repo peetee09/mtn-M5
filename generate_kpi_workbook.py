@@ -888,7 +888,7 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
               accent="FF70AD47")
     _kpi_card(ws, row=21, col=10, title="AUDIT COMPLIANCE TODAY",
               formula='=IFERROR(TEXT(SUMIFS(tblAuditLog[AuditCount],tblAuditLog[BusinessDate],TODAY())'
-                      '/IFERROR(INDEX(tblConfig_Rules[Value],MATCH("Audit_SampleSize",tblConfig_Rules[RuleName],0)),1),"0.0%"),"N/A")',
+                      '/INDEX(tblConfig_Rules[Value],MATCH("Audit_SampleSize",tblConfig_Rules[RuleName],0)),"0.0%"),"N/A")',
               accent="FF70AD47")
 
     # Row 25: spacer
