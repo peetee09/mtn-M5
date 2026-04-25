@@ -51,12 +51,14 @@ Public Sub CreateKPIWorkbook()
     Call BuildIN_SHIPPED_LPNS(wb)
     Call BuildIN_STAFFING(wb)
     Call BuildIN_TARGETS_DAILY(wb)
+    Call BuildIN_AUDIT_LOG(wb)
     Call BuildT_DISPATCH_KPI(wb)
     Call BuildT_DISPATCH_DAILY(wb)
     Call BuildACTION_HRP(wb)
     Call BuildACTION_PACKED(wb)
     Call BuildHISTORY(wb)
     Call BuildDATA_QUALITY(wb)
+    Call BuildCHARTS(wb)
     Call BuildDASHBOARD(wb)
 
     ' Delete the temporary placeholder sheet
@@ -72,8 +74,68 @@ Public Sub CreateKPIWorkbook()
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
 
-    MsgBox "KPI Workbook created successfully!" & vbCrLf & _
-           "Unprotect password: " & UNPROTECT_PW, vbInformation, "Done"
+    ' ── Save as macro-enabled workbook (.xlsm) ────────────────────────────────
+    ' This ensures VBA code and Form Button assignments survive the next open.
+    Dim xlsmPath As String
+    Dim dotPos   As Long
+
+    If LCase(Right(wb.Name, 5)) = ".xlsm" Then
+        ' Already a macro-enabled file — just save in place.
+        wb.Save
+        MsgBox "KPI Workbook created successfully!" & vbCrLf & _
+               "Unprotect password: " & UNPROTECT_PW & vbCrLf & vbCrLf & _
+               "File saved as .xlsm — macros are embedded and buttons will work on next open.", _
+               vbInformation, "Done"
+    ElseIf wb.Path = "" Then
+        ' Workbook has never been saved (e.g. "Book1" with no path).
+        ' Prompt the user to choose a location.
+        Dim savePath As String
+        savePath = Application.GetSaveAsFilename( _
+            InitialFileName:="KPI_Workbook.xlsm", _
+            FileFilter:="Excel Macro-Enabled Workbook (*.xlsm), *.xlsm", _
+            Title:="Save the KPI Workbook as .xlsm")
+        If savePath = False Or savePath = "" Then
+            MsgBox "Save cancelled. The workbook was NOT saved as .xlsm." & vbCrLf & _
+                   "Macro buttons will not persist until you save the file as .xlsm.", _
+                   vbExclamation, "Save Cancelled"
+        Else
+            Application.DisplayAlerts = False
+            On Error GoTo SaveErr
+            wb.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbookMacroEnabled
+            Application.DisplayAlerts = True
+            On Error GoTo 0
+            MsgBox "KPI Workbook created successfully!" & vbCrLf & _
+                   "Unprotect password: " & UNPROTECT_PW & vbCrLf & vbCrLf & _
+                   "File saved as .xlsm — macros are embedded and buttons will work on next open.", _
+                   vbInformation, "Done"
+        End If
+    Else
+        ' Workbook has been saved but is not already .xlsm — convert in place.
+        dotPos = InStrRev(wb.FullName, ".")
+        If dotPos > 0 Then
+            xlsmPath = Left(wb.FullName, dotPos - 1) & ".xlsm"
+        Else
+            xlsmPath = wb.FullName & ".xlsm"
+        End If
+        Application.DisplayAlerts = False
+        On Error GoTo SaveErr
+        wb.SaveAs Filename:=xlsmPath, FileFormat:=xlOpenXMLWorkbookMacroEnabled
+        Application.DisplayAlerts = True
+        On Error GoTo 0
+        MsgBox "KPI Workbook created successfully!" & vbCrLf & _
+               "Unprotect password: " & UNPROTECT_PW & vbCrLf & vbCrLf & _
+               "File saved as .xlsm — macros are embedded and buttons will work on next open.", _
+               vbInformation, "Done"
+    End If
+    Exit Sub
+
+SaveErr:
+    Application.DisplayAlerts = True
+    On Error GoTo 0
+    MsgBox "KPI Workbook was built, but could not be saved as .xlsm." & vbCrLf & _
+           "Error: " & Err.Description & vbCrLf & vbCrLf & _
+           "Please use File > Save As and choose 'Excel Macro-Enabled Workbook (*.xlsm)' manually.", _
+           vbCritical, "Save Error"
 End Sub
 
 '================================================================================
@@ -427,11 +489,13 @@ Private Sub BuildIN_STAFFING(wb As Workbook)
         .IgnoreBlank = True
     End With
 
-    ' Area validation from CONFIG
+    ' Area validation — use absolute reference to CONFIG area list;
+    ' cross-sheet structured references (=tblConfig_Areas[AreaName]) are
+    ' unreliable in data validation and can cause Excel to crash/fail silently.
     With tbl.ListColumns("Area").DataBodyRange.Validation
         .Delete
         .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
-            Operator:=xlBetween, Formula1:="=tblConfig_Areas[AreaName]"
+            Operator:=xlBetween, Formula1:="=CONFIG!$E$5:$E$7"
         .IgnoreBlank = True
     End With
 
@@ -484,6 +548,57 @@ Private Sub BuildIN_TARGETS_DAILY(wb As Workbook)
     ws.Tab.Color = RGB(0, 176, 80)
 End Sub
 
+' ---- IN_AUDIT_LOG -----------------------------------------------------------
+Private Sub BuildIN_AUDIT_LOG(wb As Workbook)
+    Dim ws As Worksheet
+    Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    ws.Name = "IN_AUDIT_LOG"
+
+    Dim cols() As String
+    cols = Split("BusinessDate,ShiftName,Area,AuditCount,Notes", ",")
+
+    Dim col As Integer
+    For col = 0 To UBound(cols)
+        ws.Cells(1, col + 1).Value = cols(col)
+        ws.Cells(1, col + 1).Font.Bold = True
+        ws.Cells(1, col + 1).Interior.Color = RGB(112, 173, 71)
+        ws.Cells(1, col + 1).Font.Color = COL_WHITE
+    Next col
+
+    ws.Range("A2").Value = Date
+    ws.Range("B2").Value = "Day"
+    ws.Range("C2").Value = "Auditing"
+    ws.Range("D2").Value = 0
+
+    Dim tbl As ListObject
+    Set tbl = ws.ListObjects.Add(xlSrcRange, ws.Range("A1:E2"), , xlYes)
+    tbl.Name = "tblAuditLog"
+    tbl.TableStyle = "TableStyleMedium4"
+
+    ' Shift validation
+    With tbl.ListColumns("ShiftName").DataBodyRange.Validation
+        .Delete
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
+            Operator:=xlBetween, Formula1:="Day,Night"
+        .IgnoreBlank = True
+    End With
+
+    ' Area validation (same fix as IN_STAFFING — use absolute ref)
+    With tbl.ListColumns("Area").DataBodyRange.Validation
+        .Delete
+        .Add Type:=xlValidateList, AlertStyle:=xlValidAlertStop, _
+            Operator:=xlBetween, Formula1:="=CONFIG!$E$5:$E$7"
+        .IgnoreBlank = True
+    End With
+
+    ws.Columns("A:A").NumberFormat = "dd/mm/yyyy"
+    ws.Activate
+    ws.Range("A2").Select
+    ActiveWindow.FreezePanes = True
+    ws.Columns("A:E").AutoFit
+    ws.Tab.Color = RGB(112, 173, 71)
+End Sub
+
 ' ---- T_DISPATCH_KPI ---------------------------------------------------------
 Private Sub BuildT_DISPATCH_KPI(wb As Workbook)
     Dim ws As Worksheet
@@ -491,7 +606,7 @@ Private Sub BuildT_DISPATCH_KPI(wb As Workbook)
     ws.Name = "T_DISPATCH_KPI"
 
     Dim cols() As String
-    cols = Split("BusinessDate,ShiftName,ShippedCartons,TotalStaff,TargetPerPerson,ExpectedCartons,PerformancePct,RAG", ",")
+    cols = Split("BusinessDate,ShiftName,ShippedCartons,TotalStaff,TargetPerPerson,ExpectedCartons,PerformancePct,RAG,AuditCount,AuditTarget,AuditPct,HRPOpen,PackedOverdue", ",")
 
     Dim col As Integer
     For col = 0 To UBound(cols)
@@ -506,7 +621,7 @@ Private Sub BuildT_DISPATCH_KPI(wb As Workbook)
     ws.Range("B2").Value = "Day"
 
     Dim tbl As ListObject
-    Set tbl = ws.ListObjects.Add(xlSrcRange, ws.Range("A1:H2"), , xlYes)
+    Set tbl = ws.ListObjects.Add(xlSrcRange, ws.Range("A1:M2"), , xlYes)
     tbl.Name = "tblDispatchKPI"
     tbl.TableStyle = "TableStyleMedium2"
 
@@ -526,9 +641,23 @@ Private Sub BuildT_DISPATCH_KPI(wb As Workbook)
     tbl.ListColumns("RAG").DataBodyRange(1).Formula = _
         "=IF([@PerformancePct]>=1,""Green"",IF([@PerformancePct]>=0.9,""Amber"",""Red""))"
 
+    ' Audit metrics
+    tbl.ListColumns("AuditCount").DataBodyRange(1).Formula = _
+        "=SUMIFS(tblAuditLog[AuditCount],tblAuditLog[BusinessDate],[@BusinessDate],tblAuditLog[ShiftName],[@ShiftName])"
+    tbl.ListColumns("AuditTarget").DataBodyRange(1).Formula = _
+        "=IFERROR(INDEX(tblConfig_Rules[Value],MATCH(""Audit_SampleSize"",tblConfig_Rules[RuleName],0)),20)"
+    tbl.ListColumns("AuditPct").DataBodyRange(1).Formula = _
+        "=IFERROR([@AuditCount]/[@AuditTarget],0)"
+    ' Live snapshot counts (reflect current state of source tables)
+    tbl.ListColumns("HRPOpen").DataBodyRange(1).Formula = _
+        "=COUNTIF(tblHRP[IncludeInHRP],TRUE)"
+    tbl.ListColumns("PackedOverdue").DataBodyRange(1).Formula = _
+        "=COUNTIF(tblPacked[ActionFlag],TRUE)"
+
     ' Format columns
     ws.Columns("A:A").NumberFormat = "dd/mm/yyyy"
     ws.Columns("G:G").NumberFormat = "0.0%"
+    ws.Columns("K:K").NumberFormat = "0.0%"
 
     ' RAG conditional formatting
     Dim ragRange As Range
@@ -555,7 +684,7 @@ Private Sub BuildT_DISPATCH_KPI(wb As Workbook)
     ws.Activate
     ws.Range("A2").Select
     ActiveWindow.FreezePanes = True
-    ws.Columns("A:H").AutoFit
+    ws.Columns("A:M").AutoFit
     ws.Tab.Color = RGB(255, 192, 0)
 End Sub
 
@@ -694,7 +823,7 @@ Private Sub BuildHISTORY(wb As Workbook)
     ws.Name = "HISTORY"
 
     Dim cols() As String
-    cols = Split("SnapshotTimestamp,BusinessDate,ShiftName,ShippedCartons,TotalStaff,ExpectedCartons,PerformancePct,RAG,HRP_OpenCount,Packed_OverdueCount", ",")
+    cols = Split("SnapshotTimestamp,BusinessDate,ShiftName,ShippedCartons,TotalStaff,ExpectedCartons,PerformancePct,RAG,HRP_OpenCount,Packed_OverdueCount,AuditCount", ",")
 
     Dim col As Integer
     For col = 0 To UBound(cols)
@@ -705,14 +834,14 @@ Private Sub BuildHISTORY(wb As Workbook)
     Next col
 
     Dim tbl As ListObject
-    Set tbl = ws.ListObjects.Add(xlSrcRange, ws.Range("A1:J1"), , xlYes)
+    Set tbl = ws.ListObjects.Add(xlSrcRange, ws.Range("A1:K1"), , xlYes)
     tbl.Name = "tblHistory"
     tbl.TableStyle = "TableStyleMedium2"
     tbl.ShowAutoFilterDropDown = True
 
     ws.Columns("A:B").NumberFormat = "dd/mm/yyyy hh:mm"
     ws.Columns("G:G").NumberFormat = "0.0%"
-    ws.Columns("A:J").AutoFit
+    ws.Columns("A:K").AutoFit
     ws.Tab.Color = RGB(128, 128, 128)
 End Sub
 
@@ -921,65 +1050,83 @@ Private Sub BuildDASHBOARD(wb As Workbook)
     ' Row 19: spacer
     ws.Rows(19).RowHeight = 8
 
-    ' ── Row 20: RAG LEGEND section ────────────────────────────────────────────
+    ' ── Row 20: AUDIT OVERVIEW section ────────────────────────────────────────
     ws.Rows(20).RowHeight = 20
-    Call MakeSectionHeader(ws, "A20:N20", "  RAG LEGEND", RGB(68, 114, 196))
+    Call MakeSectionHeader(ws, "A20:N20", "  AUDIT OVERVIEW  (Today)", RGB(112, 173, 71))
 
-    ' Row 21: legend colour blocks
-    ws.Rows(21).RowHeight = 16
-    With ws.Range("B21:D21")
+    Call MakeKPICard(ws, 21, 2, "AUDITS TODAY", _
+        "=IFERROR(SUMIFS(tblAuditLog[AuditCount],tblAuditLog[BusinessDate],TODAY()),""N/A"")", _
+        RGB(112, 173, 71))
+    Call MakeKPICard(ws, 21, 6, "AUDIT TARGET (PER SHIFT)", _
+        "=IFERROR(INDEX(tblConfig_Rules[Value],MATCH(""Audit_SampleSize"",tblConfig_Rules[RuleName],0)),""N/A"")", _
+        RGB(112, 173, 71))
+    Call MakeKPICard(ws, 21, 10, "AUDIT COMPLIANCE TODAY", _
+        "=IFERROR(TEXT(SUMIFS(tblAuditLog[AuditCount],tblAuditLog[BusinessDate],TODAY())" & _
+        "/INDEX(tblConfig_Rules[Value],MATCH(""Audit_SampleSize"",tblConfig_Rules[RuleName],0)),""0.0%""),""N/A"")", _
+        RGB(112, 173, 71))
+
+    ' Row 25: spacer
+    ws.Rows(25).RowHeight = 8
+
+    ' ── Row 26: RAG LEGEND section ────────────────────────────────────────────
+    ws.Rows(26).RowHeight = 20
+    Call MakeSectionHeader(ws, "A26:N26", "  RAG LEGEND", RGB(68, 114, 196))
+
+    ' Row 27: legend colour blocks
+    ws.Rows(27).RowHeight = 16
+    With ws.Range("B27:D27")
         .Merge: .Value = "GREEN": .Font.Bold = True: .Font.Size = 9: .Font.Color = COL_WHITE
         .Interior.Color = COL_GREEN: .HorizontalAlignment = xlCenter: .Borders.LineStyle = xlContinuous
     End With
-    With ws.Range("F21:H21")
+    With ws.Range("F27:H27")
         .Merge: .Value = "AMBER": .Font.Bold = True: .Font.Size = 9: .Font.Color = RGB(51, 51, 51)
         .Interior.Color = COL_AMBER: .HorizontalAlignment = xlCenter: .Borders.LineStyle = xlContinuous
     End With
-    With ws.Range("J21:L21")
+    With ws.Range("J27:L27")
         .Merge: .Value = "RED": .Font.Bold = True: .Font.Size = 9: .Font.Color = COL_WHITE
         .Interior.Color = COL_RED: .HorizontalAlignment = xlCenter: .Borders.LineStyle = xlContinuous
     End With
 
-    ' Row 22: legend descriptions
-    ws.Rows(22).RowHeight = 14
-    With ws.Range("B22:D22")
+    ' Row 28: legend descriptions
+    ws.Rows(28).RowHeight = 14
+    With ws.Range("B28:D28")
         .Merge: .Value = "Dispatch Performance >= 100%"
         .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
         .HorizontalAlignment = xlCenter
     End With
-    With ws.Range("F22:H22")
+    With ws.Range("F28:H28")
         .Merge: .Value = "90% <= Performance < 100%"
         .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
         .HorizontalAlignment = xlCenter
     End With
-    With ws.Range("J22:L22")
+    With ws.Range("J28:L28")
         .Merge: .Value = "Performance < 90%"
         .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
         .HorizontalAlignment = xlCenter
     End With
 
-    ' Row 23: spacer
-    ws.Rows(23).RowHeight = 8
+    ' Row 29: spacer
+    ws.Rows(29).RowHeight = 8
 
-    ' ── Row 24: QUICK NAVIGATION section ─────────────────────────────────────
-    ws.Rows(24).RowHeight = 20
-    Call MakeSectionHeader(ws, "A24:N24", "  QUICK NAVIGATION", RGB(89, 89, 89))
+    ' ── Row 30: QUICK NAVIGATION section ─────────────────────────────────────
+    ws.Rows(30).RowHeight = 20
+    Call MakeSectionHeader(ws, "A30:N30", "  QUICK NAVIGATION", RGB(89, 89, 89))
 
-    ' Row 25: navigation links (using hyperlinks)
-    ws.Rows(25).RowHeight = 16
+    ' Row 31: primary navigation links
+    ws.Rows(31).RowHeight = 16
     Dim navItems(6, 1) As String
     navItems(0, 0) = "IN_PACKED":       navItems(0, 1) = "#IN_PACKED!A1"
     navItems(1, 0) = "IN_HRP":          navItems(1, 1) = "#IN_HRP!A1"
     navItems(2, 0) = "IN_SHIPPED_LPNS": navItems(2, 1) = "#IN_SHIPPED_LPNS!A1"
     navItems(3, 0) = "IN_STAFFING":     navItems(3, 1) = "#IN_STAFFING!A1"
-    navItems(4, 0) = "T_DISPATCH_KPI":  navItems(4, 1) = "#T_DISPATCH_KPI!A1"
-    navItems(5, 0) = "DATA_QUALITY":    navItems(5, 1) = "#DATA_QUALITY!A1"
+    navItems(4, 0) = "IN_AUDIT_LOG":    navItems(4, 1) = "#IN_AUDIT_LOG!A1"
+    navItems(5, 0) = "T_DISPATCH_KPI":  navItems(5, 1) = "#T_DISPATCH_KPI!A1"
     navItems(6, 0) = "HISTORY":         navItems(6, 1) = "#HISTORY!A1"
 
     Dim ni As Integer
     For ni = 0 To 6
         Dim nc As Range
-        Set nc = ws.Range(ws.Cells(25, (ni * 2) + 2), ws.Cells(25, (ni * 2) + 3))
+        Set nc = ws.Range(ws.Cells(31, (ni * 2) + 2), ws.Cells(31, (ni * 2) + 3))
         nc.Merge
         nc.Value = ">> " & navItems(ni, 0)
         nc.Interior.Color = COL_WHITE
@@ -991,16 +1138,51 @@ Private Sub BuildDASHBOARD(wb As Workbook)
             TextToDisplay:=">> " & navItems(ni, 0)
     Next ni
 
-    ' Row 26: spacer
-    ws.Rows(26).RowHeight = 8
+    ' Row 32: secondary navigation — analysis/charts sheets
+    ws.Rows(32).RowHeight = 16
+    Dim navItems2(3, 1) As String
+    navItems2(0, 0) = "CHARTS":          navItems2(0, 1) = "#CHARTS!A1"
+    navItems2(1, 0) = "DATA_QUALITY":    navItems2(1, 1) = "#DATA_QUALITY!A1"
+    navItems2(2, 0) = "ACTION_HRP":      navItems2(2, 1) = "#ACTION_HRP!A1"
+    navItems2(3, 0) = "ACTION_PACKED":   navItems2(3, 1) = "#ACTION_PACKED!A1"
 
-    ' ── Row 27: CONTROLS section ──────────────────────────────────────────────
-    ws.Rows(27).RowHeight = 20
-    Call MakeSectionHeader(ws, "A27:N27", "  CONTROLS  (VBA macro buttons)", COL_HEADER)
+    Dim ni2 As Integer
+    For ni2 = 0 To 3
+        Dim nc2 As Range
+        Set nc2 = ws.Range(ws.Cells(32, (ni2 * 2) + 2), ws.Cells(32, (ni2 * 2) + 3))
+        nc2.Merge
+        nc2.Value = ">> " & navItems2(ni2, 0)
+        nc2.Interior.Color = COL_WHITE
+        nc2.Font.Bold = True: nc2.Font.Size = 8: nc2.Font.Color = RGB(0, 70, 170)
+        nc2.Font.Underline = xlUnderlineStyleSingle
+        nc2.HorizontalAlignment = xlCenter: nc2.VerticalAlignment = xlCenter
+        nc2.Borders.LineStyle = xlContinuous
+        ws.Hyperlinks.Add Anchor:=nc2, Address:="", SubAddress:=navItems2(ni2, 1), _
+            TextToDisplay:=">> " & navItems2(ni2, 0)
+    Next ni2
 
-    ' Row 28: button label cells
-    ws.Rows(28).RowHeight = 18
-    ws.Rows(29).RowHeight = 24
+    ' Row 33: spacer
+    ws.Rows(33).RowHeight = 8
+
+    ' ── Row 34: CONTROLS section ──────────────────────────────────────────────
+    ws.Rows(34).RowHeight = 20
+    Call MakeSectionHeader(ws, "A34:N34", "  CONTROLS  (VBA macro buttons — workbook must be saved as .xlsm)", COL_HEADER)
+
+    ' Row 35: macro-enable instructions
+    ws.Rows(35).RowHeight = 28
+    With ws.Range("A35:N35")
+        .Merge
+        .Value = Chr(9888) & "  To use the buttons below: save this file as .xlsm (File > Save As > Excel Macro-Enabled Workbook)." & _
+                 "  Enable macros when prompted on next open.  Alternatively run CreateKPIWorkbook.bas from Developer > Visual Basic."
+        .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(155, 100, 0)
+        .Interior.Color = RGB(255, 244, 204)
+        .HorizontalAlignment = xlLeft: .VerticalAlignment = xlCenter
+        .WrapText = True
+    End With
+
+    ' Row 36: button label cells (actual Form Buttons are placed over these cells by AddButtons)
+    ws.Rows(36).RowHeight = 18
+    ws.Rows(37).RowHeight = 24
 
     Dim btnCols() As Integer: ReDim btnCols(2)
     btnCols(0) = 2: btnCols(1) = 6: btnCols(2) = 10
@@ -1015,14 +1197,14 @@ Private Sub BuildDASHBOARD(wb As Workbook)
 
     Dim bi As Integer
     For bi = 0 To 2
-        With ws.Range(ws.Cells(28, btnCols(bi)), ws.Cells(28, btnCols(bi) + 2))
+        With ws.Range(ws.Cells(36, btnCols(bi)), ws.Cells(36, btnCols(bi) + 2))
             .Merge: .Value = btnNames(bi)
             .Font.Bold = True: .Font.Size = 9: .Font.Color = COL_HEADER
             .Interior.Color = RGB(255, 244, 204)
             .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
             .Borders.LineStyle = xlContinuous
         End With
-        With ws.Range(ws.Cells(29, btnCols(bi)), ws.Cells(29, btnCols(bi) + 2))
+        With ws.Range(ws.Cells(37, btnCols(bi)), ws.Cells(37, btnCols(bi) + 2))
             .Merge: .Value = btnDescs(bi)
             .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
             .HorizontalAlignment = xlCenter: .WrapText = True
@@ -1093,13 +1275,138 @@ Private Sub BuildDispatchPivotForChart(wb As Workbook, dashWs As Worksheet)
     ' longer called from BuildDASHBOARD but is left here if needed.
 End Sub
 
+' ---- CHARTS -----------------------------------------------------------------
+' Creates a dedicated CHARTS sheet with 5 pre-built charts that update as
+' data is entered into the input and KPI tables.
+Private Sub BuildCHARTS(wb As Workbook)
+    Dim ws As Worksheet
+    Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    ws.Name = "CHARTS"
+
+    ws.Range("A1").Value = "PERFORMANCE CHARTS  —  All charts update automatically as data is entered"
+    ws.Range("A1").Font.Bold = True
+    ws.Range("A1").Font.Size = 12
+    ws.Range("A1").Font.Color = COL_HEADER
+
+    Dim wsDaily As Worksheet: Set wsDaily = wb.Worksheets("T_DISPATCH_DAILY")
+    Dim wsKPI   As Worksheet: Set wsKPI   = wb.Worksheets("T_DISPATCH_KPI")
+    Dim wsHist  As Worksheet: Set wsHist  = wb.Worksheets("HISTORY")
+
+    ' ── Chart 1: Daily Performance % Trend (Line) ─────────────────────────────
+    Dim ch1 As ChartObject
+    Set ch1 = ws.ChartObjects.Add(Left:=10, Top:=50, Width:=420, Height:=250)
+    With ch1.Chart
+        .ChartType = xlLineMarkers
+        .HasTitle = True
+        .ChartTitle.Text = "Daily Dispatch Performance % Trend"
+        ' Add series manually so we can use worksheet-spanning references without including headers
+        .SeriesCollection.NewSeries
+        .SeriesCollection(1).Values  = wsDaily.Range("E2:E1048576")
+        .SeriesCollection(1).XValues = wsDaily.Range("A2:A1048576")
+        .SeriesCollection(1).Name    = "Performance %"
+        .Axes(xlValue).HasTitle = True
+        .Axes(xlValue).AxisTitle.Text = "Performance %"
+        .Axes(xlValue).TickLabels.NumberFormat = "0%"
+        .HasLegend = False
+        .SeriesCollection(1).Format.Line.ForeColor.RGB = RGB(0, 112, 192)
+        .SeriesCollection(1).Format.Line.Weight = 2
+        .SeriesCollection(1).MarkerStyle = xlMarkerStyleCircle
+        .SeriesCollection(1).MarkerSize  = 5
+    End With
+
+    ' ── Chart 2: Shipped vs Expected Cartons per Shift (Clustered Column) ────
+    Dim ch2 As ChartObject
+    Set ch2 = ws.ChartObjects.Add(Left:=450, Top:=50, Width:=420, Height:=250)
+    With ch2.Chart
+        .ChartType = xlColumnClustered
+        .HasTitle = True
+        .ChartTitle.Text = "Shipped vs Expected Cartons per Shift"
+        .SeriesCollection.NewSeries
+        .SeriesCollection(1).Values  = wsKPI.Range("C2:C1048576")
+        .SeriesCollection(1).XValues = wsKPI.Range("B2:B1048576")
+        .SeriesCollection(1).Name    = "Shipped"
+        .SeriesCollection.NewSeries
+        .SeriesCollection(2).Values  = wsKPI.Range("F2:F1048576")
+        .SeriesCollection(2).XValues = wsKPI.Range("B2:B1048576")
+        .SeriesCollection(2).Name    = "Expected"
+        .Axes(xlValue).HasTitle = True
+        .Axes(xlValue).AxisTitle.Text = "Cartons"
+        .SeriesCollection(1).Format.Fill.ForeColor.RGB = RGB(0, 112, 192)
+        .SeriesCollection(2).Format.Fill.ForeColor.RGB = RGB(80, 200, 120)
+    End With
+
+    ' ── Chart 3: HRP Open & Packed Overdue Trend (Clustered Column) ─────────
+    Dim ch3 As ChartObject
+    Set ch3 = ws.ChartObjects.Add(Left:=10, Top:=330, Width:=420, Height:=250)
+    With ch3.Chart
+        .ChartType = xlColumnClustered
+        .HasTitle = True
+        .ChartTitle.Text = "HRP Open Items & Packed Overdue — Historical Trend"
+        .SeriesCollection.NewSeries
+        .SeriesCollection(1).Values  = wsHist.Range("I:I")
+        .SeriesCollection(1).XValues = wsHist.Range("B:B")
+        .SeriesCollection(1).Name    = "HRP Open"
+        .SeriesCollection.NewSeries
+        .SeriesCollection(2).Values  = wsHist.Range("J:J")
+        .SeriesCollection(2).XValues = wsHist.Range("B:B")
+        .SeriesCollection(2).Name    = "Packed Overdue"
+        .Axes(xlValue).HasTitle = True
+        .Axes(xlValue).AxisTitle.Text = "Count"
+        .SeriesCollection(1).Format.Fill.ForeColor.RGB = COL_RED
+        .SeriesCollection(2).Format.Fill.ForeColor.RGB = COL_AMBER
+    End With
+
+    ' ── Chart 4: Daily Staff Count Trend (Line) ──────────────────────────────
+    Dim ch4 As ChartObject
+    Set ch4 = ws.ChartObjects.Add(Left:=450, Top:=330, Width:=420, Height:=250)
+    With ch4.Chart
+        .ChartType = xlLineMarkers
+        .HasTitle = True
+        .ChartTitle.Text = "Daily Staff Count Trend"
+        .SeriesCollection.NewSeries
+        .SeriesCollection(1).Values  = wsDaily.Range("C:C")
+        .SeriesCollection(1).XValues = wsDaily.Range("A:A")
+        .SeriesCollection(1).Name    = "Total Staff"
+        .Axes(xlValue).HasTitle = True
+        .Axes(xlValue).AxisTitle.Text = "Staff Count"
+        .HasLegend = False
+        .SeriesCollection(1).Format.Line.ForeColor.RGB = COL_GREEN
+        .SeriesCollection(1).Format.Line.Weight = 2
+        .SeriesCollection(1).MarkerStyle = xlMarkerStyleSquare
+        .SeriesCollection(1).MarkerSize  = 5
+    End With
+
+    ' ── Chart 5: Audit Performance % Trend (Line) ────────────────────────────
+    Dim ch5 As ChartObject
+    Set ch5 = ws.ChartObjects.Add(Left:=10, Top:=610, Width:=420, Height:=250)
+    With ch5.Chart
+        .ChartType = xlLineMarkers
+        .HasTitle = True
+        .ChartTitle.Text = "Audit Compliance % per Shift"
+        .SeriesCollection.NewSeries
+        .SeriesCollection(1).Values  = wsKPI.Range("K2:K1048576")
+        .SeriesCollection(1).XValues = wsKPI.Range("B2:B1048576")
+        .SeriesCollection(1).Name    = "Audit %"
+        .Axes(xlValue).HasTitle = True
+        .Axes(xlValue).AxisTitle.Text = "Audit %"
+        .Axes(xlValue).TickLabels.NumberFormat = "0%"
+        .HasLegend = False
+        .SeriesCollection(1).Format.Line.ForeColor.RGB = RGB(112, 173, 71)
+        .SeriesCollection(1).Format.Line.Weight = 2
+        .SeriesCollection(1).MarkerStyle = xlMarkerStyleDiamond
+        .SeriesCollection(1).MarkerSize  = 5
+    End With
+
+    ws.Tab.Color = RGB(0, 112, 192)
+End Sub
+
 '================================================================================
 ' UTILITY ROUTINES
 '================================================================================
 
 Private Sub ReorderSheets(wb As Workbook)
     Dim order() As String
-    order = Split("DASHBOARD,CONFIG,IN_PACKED,IN_HRP,IN_SHIPPED_LPNS,IN_STAFFING,IN_TARGETS_DAILY,T_DISPATCH_KPI,T_DISPATCH_DAILY,ACTION_HRP,ACTION_PACKED,HISTORY,DATA_QUALITY", ",")
+    order = Split("DASHBOARD,CHARTS,CONFIG,IN_PACKED,IN_HRP,IN_SHIPPED_LPNS,IN_STAFFING,IN_TARGETS_DAILY,IN_AUDIT_LOG,T_DISPATCH_KPI,T_DISPATCH_DAILY,ACTION_HRP,ACTION_PACKED,HISTORY,DATA_QUALITY", ",")
     Dim i As Integer
     For i = 0 To UBound(order)
         ' On Error Resume Next suppresses errors for sheets that don't exist yet;
@@ -1118,10 +1425,10 @@ Private Sub AddButtons(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets("DASHBOARD")
 
-    ' Use Rows(28).Top to get the exact pixel position of row 28 dynamically,
+    ' Use Rows(36).Top to get the exact pixel position of row 36 dynamically,
     ' so this remains correct if any row heights above it change.
     Dim btnTop As Double
-    btnTop = ws.Rows(28).Top
+    btnTop = ws.Rows(36).Top
     Const BTN_H As Long = 30
 
     ' Refresh All button
@@ -1166,9 +1473,9 @@ Public Sub RefreshAll()
     ' Force recalculation
     Application.Calculate
 
-    ' Update last refreshed timestamp on DASHBOARD
+    ' Update last refreshed timestamp on DASHBOARD (formula is in the D2:G2 merged cell)
     On Error Resume Next
-    ThisWorkbook.Worksheets("DASHBOARD").Range("B2").Formula = _
+    ThisWorkbook.Worksheets("DASHBOARD").Range("D2").Formula = _
         "=TEXT(NOW(),""dd/mm/yyyy hh:mm"")"
     On Error GoTo 0
 
@@ -1225,6 +1532,14 @@ Public Sub TakeDailySnapshot()
             ThisWorkbook.Worksheets("IN_HRP").ListObjects("tblHRP").ListColumns("IncludeInHRP").DataBodyRange, True)
         newRow.Range(10).Value = Application.WorksheetFunction.CountIf( _
             ThisWorkbook.Worksheets("IN_PACKED").ListObjects("tblPacked").ListColumns("ActionFlag").DataBodyRange, True)
+        ' AuditCount — looked up by column name so the position is always correct
+        On Error Resume Next
+        Dim auditColIdx As Integer
+        auditColIdx = wsHist.ListObjects("tblHistory").ListColumns("AuditCount").Index
+        If auditColIdx > 0 Then
+            newRow.Range(auditColIdx).Value = kpiTbl.ListColumns("AuditCount").DataBodyRange(r).Value
+        End If
+        On Error GoTo 0
     Next r
 
     MsgBox "Snapshot saved: " & kpiTbl.ListRows.Count & " row(s) added to HISTORY.", _

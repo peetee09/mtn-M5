@@ -10,7 +10,17 @@ Requirements:
 
 Usage:
     python generate_kpi_workbook.py
-    # -> creates  KPI_Workbook.xlsx  in the current directory
+    # -> creates  KPI_Workbook.xlsm  in the current directory
+
+Note on macros:
+    openpyxl cannot embed VBA code.  The output file uses the .xlsm
+    extension (macro-enabled container) so that Excel does not strip the
+    format, but the file contains NO macro code.  To get working buttons
+    and RefreshAll / TakeDailySnapshot macros, open the generated file in
+    Excel, paste CreateKPIWorkbook.bas into the VBA editor, and save.
+    Alternatively, run CreateKPIWorkbook.bas directly from the VBA editor
+    inside an xlsm-hosted workbook — that path both builds and saves the
+    file with macros fully embedded.
 
 Compatibility: Excel 2016 and later.
 Unprotect password: KPI2024
@@ -30,6 +40,7 @@ from openpyxl.formatting.rule import Rule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.chart import BarChart, LineChart, Reference
 
 # ---------------------------------------------------------------------------
 # Colour helpers
@@ -367,13 +378,47 @@ def build_in_targets(wb: Workbook) -> None:
     _autofit(ws)
 
 
+def build_in_audit_log(wb: Workbook) -> None:
+    ws = wb.create_sheet("IN_AUDIT_LOG")
+    ws.sheet_properties.tabColor = "70AD47"
+
+    cols = ["BusinessDate", "ShiftName", "Area", "AuditCount", "Notes"]
+    header_style(ws, 1, cols)
+
+    ws.cell(row=2, column=1, value=datetime.date.today())
+    ws.cell(row=2, column=2, value="Day")
+    ws.cell(row=2, column=3, value="Auditing")
+    ws.cell(row=2, column=4, value=0)
+    ws.cell(row=2, column=5, value="")
+
+    add_table(ws, "A1:E2", "tblAuditLog", "TableStyleMedium4")
+    add_shift_validation(ws, "B")
+
+    dv_area = DataValidation(
+        type="list",
+        # Cross-sheet structured references for data validation are the unreliable
+        # form here. The stable explicit reference is an absolute range such as
+        # =CONFIG!$E$5:$E$7 (used by the VBA implementation), but this openpyxl
+        # path keeps the area list inline for compatibility. Keep these values in
+        # sync with tblConfig_Areas in build_config().
+        formula1='"Auditing,Manual handover,Dispatch sealing"',
+        allow_blank=True, showDropDown=False
+    )
+    dv_area.sqref = "C2:C10000"
+    ws.add_data_validation(dv_area)
+
+    freeze(ws)
+    _autofit(ws)
+
+
 def build_t_dispatch_kpi(wb: Workbook) -> None:
     ws = wb.create_sheet("T_DISPATCH_KPI")
     ws.sheet_properties.tabColor = "FFC000"
 
     cols = [
         "BusinessDate", "ShiftName", "ShippedCartons", "TotalStaff",
-        "TargetPerPerson", "ExpectedCartons", "PerformancePct", "RAG"
+        "TargetPerPerson", "ExpectedCartons", "PerformancePct", "RAG",
+        "AuditCount", "AuditTarget", "AuditPct", "HRPOpen", "PackedOverdue"
     ]
     header_style(ws, 1, cols)
 
@@ -392,10 +437,20 @@ def build_t_dispatch_kpi(wb: Workbook) -> None:
     ws.cell(row=2, column=7).value = "=IFERROR([@ShippedCartons]/[@ExpectedCartons],0)"
     ws.cell(row=2, column=8).value = \
         '=IF([@PerformancePct]>=1,"Green",IF([@PerformancePct]>=0.9,"Amber","Red"))'
+    # Audit metrics
+    ws.cell(row=2, column=9).value = \
+        "=SUMIFS(tblAuditLog[AuditCount],tblAuditLog[BusinessDate],[@BusinessDate],tblAuditLog[ShiftName],[@ShiftName])"
+    ws.cell(row=2, column=10).value = \
+        '=IFERROR(INDEX(tblConfig_Rules[Value],MATCH("Audit_SampleSize",tblConfig_Rules[RuleName],0)),20)'
+    ws.cell(row=2, column=11).value = "=IFERROR([@AuditCount]/[@AuditTarget],0)"
+    # Live snapshot counts (reflect current state of source tables)
+    ws.cell(row=2, column=12).value = "=COUNTIF(tblHRP[IncludeInHRP],TRUE)"
+    ws.cell(row=2, column=13).value = "=COUNTIF(tblPacked[ActionFlag],TRUE)"
 
     ws.cell(row=2, column=7).number_format = "0.0%"
+    ws.cell(row=2, column=11).number_format = "0.0%"
 
-    add_table(ws, "A1:H2", "tblDispatchKPI", "TableStyleMedium2")
+    add_table(ws, "A1:M2", "tblDispatchKPI", "TableStyleMedium2")
 
     # RAG conditional formatting
     rag_col = "H"
@@ -405,6 +460,15 @@ def build_t_dispatch_kpi(wb: Workbook) -> None:
             Rule(type="containsText", operator="containsText", text=text,
                  dxf=DifferentialStyle(fill=fill(hex_color)))
         )
+
+    # AuditPct data bar (column K = 11)
+    from openpyxl.formatting.rule import DataBarRule
+    ws.conditional_formatting.add(
+        "K2:K10000",
+        DataBarRule(start_type="num", start_value=0,
+                    end_type="num", end_value=1,
+                    color="FF70AD47")
+    )
 
     freeze(ws)
     _autofit(ws)
@@ -503,7 +567,7 @@ def build_history(wb: Workbook) -> None:
         "SnapshotTimestamp", "BusinessDate", "ShiftName",
         "ShippedCartons", "TotalStaff", "ExpectedCartons",
         "PerformancePct", "RAG",
-        "HRP_OpenCount", "Packed_OverdueCount"
+        "HRP_OpenCount", "Packed_OverdueCount", "AuditCount"
     ]
     header_style(ws, 1, cols)
     # Seed an empty row so the table range has at least 2 rows (openpyxl requirement)
@@ -569,12 +633,145 @@ def build_data_quality(wb: Workbook) -> None:
     _autofit(ws)
 
 
+def build_charts(wb: Workbook) -> None:
+    """Dedicated CHARTS sheet with 5 pre-built charts that update as data is added."""
+    ws = wb.create_sheet("CHARTS")
+    ws.sheet_properties.tabColor = "0070C0"
+
+    ws["A1"] = "PERFORMANCE CHARTS  —  All charts update automatically as data is entered"
+    ws["A1"].font = Font(bold=True, size=12, color=_hex_font_color(HEADER_HEX))
+
+    ws_daily = wb["T_DISPATCH_DAILY"]
+    ws_kpi   = wb["T_DISPATCH_KPI"]
+    ws_hist  = wb["HISTORY"]
+
+    # ── Chart 1: Daily Dispatch Performance % Trend (Line) ──────────────────
+    chart1 = LineChart()
+    chart1.title  = "Daily Dispatch Performance % Trend"
+    chart1.style  = 10
+    chart1.height = 14
+    chart1.width  = 24
+    chart1.y_axis.title  = "Performance %"
+    chart1.x_axis.title  = "Business Date"
+    chart1.y_axis.numFmt = "0%"
+    chart1.y_axis.scaling.min = 0
+
+    data1 = Reference(ws_daily, min_col=5, min_row=1, max_row=1000000)   # DailyPerformancePct
+    chart1.add_data(data1, titles_from_data=True)
+    cats1 = Reference(ws_daily, min_col=1, min_row=2, max_row=1000000)   # BusinessDate
+    chart1.set_categories(cats1)
+
+    s1 = chart1.series[0]
+    s1.graphicalProperties.line.solidFill = BLUE_HEX[2:]
+    s1.graphicalProperties.line.width = 20000
+    s1.marker.symbol = "circle"
+    s1.marker.size   = 5
+
+    ws.add_chart(chart1, "A3")
+
+    # ── Chart 2: Shipped vs Expected Cartons per Shift (Clustered Bar) ───────
+    chart2 = BarChart()
+    chart2.type     = "col"
+    chart2.grouping = "clustered"
+    chart2.title    = "Shipped vs Expected Cartons per Shift"
+    chart2.style    = 10
+    chart2.height   = 14
+    chart2.width    = 24
+    chart2.y_axis.title = "Cartons"
+    chart2.x_axis.title = "Shift"
+
+    data2a = Reference(ws_kpi, min_col=3, min_row=1, max_row=1000000)    # ShippedCartons
+    data2b = Reference(ws_kpi, min_col=6, min_row=1, max_row=1000000)    # ExpectedCartons
+    chart2.add_data(data2a, titles_from_data=True)
+    chart2.add_data(data2b, titles_from_data=True)
+    chart2.series[0].graphicalProperties.solidFill = BLUE_HEX[2:]
+    chart2.series[1].graphicalProperties.solidFill = GREEN_HEX[2:]
+
+    cats2 = Reference(ws_kpi, min_col=2, min_row=2, max_row=1000000)    # ShiftName
+    chart2.set_categories(cats2)
+
+    ws.add_chart(chart2, "M3")
+
+    # ── Chart 3: HRP Open & Packed Overdue Historical Trend (Bar) ───────────
+    chart3 = BarChart()
+    chart3.type     = "col"
+    chart3.grouping = "clustered"
+    chart3.title    = "HRP Open Items & Packed Overdue — Historical Trend"
+    chart3.style    = 10
+    chart3.height   = 14
+    chart3.width    = 24
+    chart3.y_axis.title = "Count"
+    chart3.x_axis.title = "Snapshot Date"
+
+    data3a = Reference(ws_hist, min_col=9,  min_row=1, max_row=1000000)  # HRP_OpenCount
+    data3b = Reference(ws_hist, min_col=10, min_row=1, max_row=1000000)  # Packed_OverdueCount
+    chart3.add_data(data3a, titles_from_data=True)
+    chart3.add_data(data3b, titles_from_data=True)
+    chart3.series[0].graphicalProperties.solidFill = RED_HEX[2:]
+    chart3.series[1].graphicalProperties.solidFill = AMBER_HEX[2:]
+
+    cats3 = Reference(ws_hist, min_col=2, min_row=2, max_row=1000000)   # BusinessDate
+    chart3.set_categories(cats3)
+
+    ws.add_chart(chart3, "A33")
+
+    # ── Chart 4: Daily Staff Count Trend (Line) ───────────────────────────────
+    chart4 = LineChart()
+    chart4.title  = "Daily Staff Count Trend"
+    chart4.style  = 10
+    chart4.height = 14
+    chart4.width  = 24
+    chart4.y_axis.title = "Staff Count"
+    chart4.x_axis.title = "Business Date"
+
+    data4 = Reference(ws_daily, min_col=3, min_row=1, max_row=1000000)  # TotalStaff
+    chart4.add_data(data4, titles_from_data=True)
+    cats4 = Reference(ws_daily, min_col=1, min_row=2, max_row=1000000)
+    chart4.set_categories(cats4)
+
+    s4 = chart4.series[0]
+    s4.graphicalProperties.line.solidFill = GREEN_HEX[2:]
+    s4.graphicalProperties.line.width = 20000
+    s4.marker.symbol = "square"
+    s4.marker.size   = 5
+
+    ws.add_chart(chart4, "M33")
+
+    # ── Chart 5: Audit Performance % Trend (Line) ─────────────────────────────
+    chart5 = LineChart()
+    chart5.title  = "Audit Compliance % per Shift"
+    chart5.style  = 10
+    chart5.height = 14
+    chart5.width  = 24
+    chart5.y_axis.title  = "Audit %"
+    chart5.x_axis.title  = "Shift"
+    chart5.y_axis.numFmt = "0%"
+    chart5.y_axis.scaling.min = 0
+
+    data5 = Reference(ws_kpi, min_col=11, min_row=1, max_row=1000000)   # AuditPct
+    chart5.add_data(data5, titles_from_data=True)
+    cats5 = Reference(ws_kpi, min_col=2, min_row=2, max_row=1000000)   # ShiftName
+    chart5.set_categories(cats5)
+
+    s5 = chart5.series[0]
+    s5.graphicalProperties.line.solidFill = "70AD47"
+    s5.graphicalProperties.line.width = 20000
+    s5.marker.symbol = "diamond"
+    s5.marker.size   = 5
+
+    ws.add_chart(chart5, "A63")
+
+    # Column A is narrow enough not to interfere with chart placement
+    ws.column_dimensions["A"].width = 3
+    _autofit(ws)
+
+
 def build_dashboard(wb: Workbook) -> None:  # noqa: C901
     ws = wb.create_sheet("DASHBOARD")
     ws.sheet_properties.tabColor = "0070C0"
 
     # Light-grey page background (Excel-style)
-    for r in ws.iter_rows(min_row=1, max_row=40, min_col=1, max_col=14):
+    for r in ws.iter_rows(min_row=1, max_row=50, min_col=1, max_col=14):
         for cell in r:
             cell.fill = fill(PAGE_BG_HEX)
             cell.font = Font(color=_hex_font_color(TEXT_DK_HEX))
@@ -688,11 +885,30 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
     # Row 19: spacer
     ws.row_dimensions[19].height = 8
 
-    # ── Row 20: Section header "RAG LEGEND" ───────────────────────────────────
-    _section_header(ws, 20, "  RAG LEGEND", STEEL_HEX)
+    # ── Row 20: Section header "AUDIT OVERVIEW" ──────────────────────────────
+    _section_header(ws, 20, "  AUDIT OVERVIEW  (Today)", "FF70AD47")
     ws.row_dimensions[20].height = 20
 
-    # Row 21: legend colour blocks
+    # ── Rows 21-24: Audit KPI cards ──────────────────────────────────────────
+    _kpi_card(ws, row=21, col=2, title="AUDITS TODAY",
+              formula='=IFERROR(SUMIFS(tblAuditLog[AuditCount],tblAuditLog[BusinessDate],TODAY()),"N/A")',
+              accent="FF70AD47")
+    _kpi_card(ws, row=21, col=6, title="AUDIT TARGET (PER SHIFT)",
+              formula='=IFERROR(INDEX(tblConfig_Rules[Value],MATCH("Audit_SampleSize",tblConfig_Rules[RuleName],0)),"N/A")',
+              accent="FF70AD47")
+    _kpi_card(ws, row=21, col=10, title="AUDIT COMPLIANCE TODAY",
+              formula='=IFERROR(TEXT(SUMIFS(tblAuditLog[AuditCount],tblAuditLog[BusinessDate],TODAY())'
+                      '/INDEX(tblConfig_Rules[Value],MATCH("Audit_SampleSize",tblConfig_Rules[RuleName],0)),"0.0%"),"N/A")',
+              accent="FF70AD47")
+
+    # Row 25: spacer
+    ws.row_dimensions[25].height = 8
+
+    # ── Row 26: Section header "RAG LEGEND" ───────────────────────────────────
+    _section_header(ws, 26, "  RAG LEGEND", STEEL_HEX)
+    ws.row_dimensions[26].height = 20
+
+    # Row 27: legend colour blocks
     legend = [
         (2, "GREEN",  GREEN_HEX,  "Dispatch Performance >= 100%"),
         (6, "AMBER",  AMBER_HEX,  "Dispatch Performance >= 90% and < 100%"),
@@ -700,79 +916,107 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
     ]
     for start_c, label, hex_c, desc in legend:
         end_c = start_c + 2
-        ws.merge_cells(f"{col_letter(start_c)}21:{col_letter(end_c)}21")
-        lc = ws.cell(row=21, column=start_c, value=label)
+        ws.merge_cells(f"{col_letter(start_c)}27:{col_letter(end_c)}27")
+        lc = ws.cell(row=27, column=start_c, value=label)
         lc.font = Font(bold=True, size=9, color=_hex_font_color(WHITE_HEX))
         lc.fill = fill(hex_c)
         lc.alignment = Alignment(horizontal="center", vertical="center")
         lc.border = thin_border()
 
-        ws.merge_cells(f"{col_letter(start_c)}22:{col_letter(end_c)}22")
-        dc = ws.cell(row=22, column=start_c, value=desc)
+        ws.merge_cells(f"{col_letter(start_c)}28:{col_letter(end_c)}28")
+        dc = ws.cell(row=28, column=start_c, value=desc)
         dc.font = Font(italic=True, size=8, color=_hex_font_color(TEXT_MD_HEX))
         dc.fill = fill(PAGE_BG_HEX)
         dc.alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[21].height = 16
-    ws.row_dimensions[22].height = 14
+    ws.row_dimensions[27].height = 16
+    ws.row_dimensions[28].height = 14
 
-    # Row 23: spacer
-    ws.row_dimensions[23].height = 8
+    # Row 29: spacer
+    ws.row_dimensions[29].height = 8
 
-    # ── Row 24: Section header "QUICK NAVIGATION" ─────────────────────────────
-    _section_header(ws, 24, "  QUICK NAVIGATION", NAV_HEX)
-    ws.row_dimensions[24].height = 20
+    # ── Row 30: Section header "QUICK NAVIGATION" ─────────────────────────────
+    _section_header(ws, 30, "  QUICK NAVIGATION", NAV_HEX)
+    ws.row_dimensions[30].height = 20
 
-    # Row 25: navigation hyperlinks
+    # Row 31: navigation hyperlinks — Input / KPI sheets
     nav_links = [
         (2,  "IN_PACKED",         "#IN_PACKED!A1",         "004EA8"),
         (4,  "IN_HRP",            "#IN_HRP!A1",            "004EA8"),
         (6,  "IN_SHIPPED_LPNS",   "#IN_SHIPPED_LPNS!A1",   "006400"),
         (8,  "IN_STAFFING",       "#IN_STAFFING!A1",       "006400"),
-        (10, "T_DISPATCH_KPI",    "#T_DISPATCH_KPI!A1",    "8B6914"),
-        (12, "DATA_QUALITY",      "#DATA_QUALITY!A1",      "8B6914"),
+        (10, "IN_AUDIT_LOG",      "#IN_AUDIT_LOG!A1",      "375623"),
+        (12, "T_DISPATCH_KPI",    "#T_DISPATCH_KPI!A1",    "8B6914"),
         (14, "HISTORY",           "#HISTORY!A1",           "595959"),
     ]
     for start_ci, label, target, fc in nav_links:
         end_ci = start_ci + 1
-        ws.merge_cells(f"{col_letter(start_ci)}25:{col_letter(end_ci)}25")
-        nc = ws.cell(row=25, column=start_ci, value=f">> {label}")
+        ws.merge_cells(f"{col_letter(start_ci)}31:{col_letter(end_ci)}31")
+        nc = ws.cell(row=31, column=start_ci, value=f">> {label}")
         nc.hyperlink = target
-        nc.font = Font(bold=True, size=8, underline="single",
-                       color=f"FF{fc}")
+        nc.font = Font(bold=True, size=8, underline="single", color=f"FF{fc}")
         nc.fill = fill(CARD_BG_HEX)
         nc.alignment = Alignment(horizontal="center", vertical="center")
         nc.border = thin_border()
-    ws.row_dimensions[25].height = 16
+    ws.row_dimensions[31].height = 16
 
-    # Row 26: spacer
-    ws.row_dimensions[26].height = 8
+    # Row 32: secondary nav — analysis/chart sheets
+    nav_links2 = [
+        (2,  "CHARTS",           "#CHARTS!A1",           "0070C0"),
+        (4,  "DATA_QUALITY",     "#DATA_QUALITY!A1",     "8B6914"),
+        (6,  "ACTION_HRP",       "#ACTION_HRP!A1",       "8B0000"),
+        (8,  "ACTION_PACKED",    "#ACTION_PACKED!A1",    "8B0000"),
+    ]
+    for start_ci, label, target, fc in nav_links2:
+        end_ci = start_ci + 1
+        ws.merge_cells(f"{col_letter(start_ci)}32:{col_letter(end_ci)}32")
+        nc2 = ws.cell(row=32, column=start_ci, value=f">> {label}")
+        nc2.hyperlink = target
+        nc2.font = Font(bold=True, size=8, underline="single", color=f"FF{fc}")
+        nc2.fill = fill(CARD_BG_HEX)
+        nc2.alignment = Alignment(horizontal="center", vertical="center")
+        nc2.border = thin_border()
+    ws.row_dimensions[32].height = 16
 
-    # ── Row 27: Section header "CONTROLS" ────────────────────────────────────
-    _section_header(ws, 27, "  CONTROLS  (VBA macro buttons — run from Developer tab if needed)",
+    # Row 33: spacer
+    ws.row_dimensions[33].height = 8
+
+    # ── Row 34: Section header "CONTROLS" ────────────────────────────────────
+    _section_header(ws, 34, "  CONTROLS  (VBA macro buttons — workbook must be saved as .xlsm with macros enabled)",
                     HEADER_HEX)
-    ws.row_dimensions[27].height = 20
+    ws.row_dimensions[34].height = 20
 
-    # Row 28: button descriptions
+    # Row 35: macro-enable instructions
+    ws.merge_cells("A35:N35")
+    note = ws["A35"]
+    note.value = ("⚠  To activate the buttons below: File → Save As → Excel Macro-Enabled Workbook (.xlsm). "
+                  "Then enable macros when prompted on next open.  "
+                  "Alternatively, run CreateKPIWorkbook.bas from the Developer → Visual Basic editor.")
+    note.font = Font(italic=True, size=8, color=_hex_font_color(AMBER_HEX))
+    note.fill = fill("FFFFF4CC")
+    note.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    ws.row_dimensions[35].height = 28
+
+    # Row 36: button descriptions
     btns = [
         (2,  "[ REFRESH ALL ]",            "Recalculates all formulas & refreshes PivotTables"),
         (6,  "[ TAKE DAILY SNAPSHOT ]",    "Appends current KPIs to the HISTORY sheet"),
         (10, "[ POPULATE ACTION SHEETS ]", "Copies filtered data to ACTION_HRP and ACTION_PACKED"),
     ]
     for ci, bname, bdesc in btns:
-        ws.merge_cells(f"{col_letter(ci)}28:{col_letter(ci + 2)}28")
-        bc = ws.cell(row=28, column=ci, value=bname)
+        ws.merge_cells(f"{col_letter(ci)}36:{col_letter(ci + 2)}36")
+        bc = ws.cell(row=36, column=ci, value=bname)
         bc.font = Font(bold=True, size=9, color=_hex_font_color(HEADER_HEX))
         bc.fill = fill("FFFFF4CC")   # light yellow — mimics a button
         bc.alignment = Alignment(horizontal="center", vertical="center")
         bc.border = thin_border()
 
-        ws.merge_cells(f"{col_letter(ci)}29:{col_letter(ci + 2)}29")
-        dc = ws.cell(row=29, column=ci, value=bdesc)
+        ws.merge_cells(f"{col_letter(ci)}37:{col_letter(ci + 2)}37")
+        dc = ws.cell(row=37, column=ci, value=bdesc)
         dc.font = Font(italic=True, size=8, color=_hex_font_color(TEXT_MD_HEX))
         dc.fill = fill(PAGE_BG_HEX)
         dc.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    ws.row_dimensions[28].height = 18
-    ws.row_dimensions[29].height = 24
+    ws.row_dimensions[36].height = 18
+    ws.row_dimensions[37].height = 24
 
     # ── Column widths ─────────────────────────────────────────────────────────
     # Col A = narrow left margin; B–N = even card-column width
@@ -869,7 +1113,7 @@ def _autofit(ws) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def build_workbook(output_path: str = "KPI_Workbook.xlsx") -> None:
+def build_workbook(output_path: str = "KPI_Workbook.xlsm") -> None:
     wb = Workbook()
     # Remove default sheet
     if "Sheet" in wb.sheetnames:
@@ -882,19 +1126,22 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsx") -> None:
     build_in_shipped(wb)
     build_in_staffing(wb)
     build_in_targets(wb)
+    build_in_audit_log(wb)
     build_t_dispatch_kpi(wb)
     build_t_dispatch_daily(wb)
     build_action_hrp(wb)
     build_action_packed(wb)
     build_history(wb)
     build_data_quality(wb)
+    build_charts(wb)
     build_dashboard(wb)
 
     # Re-order sheets for usability.
     # Iterates desired order; skips any sheet not present to avoid KeyError.
     desired_order = [
-        "DASHBOARD", "CONFIG",
-        "IN_PACKED", "IN_HRP", "IN_SHIPPED_LPNS", "IN_STAFFING", "IN_TARGETS_DAILY",
+        "DASHBOARD", "CHARTS", "CONFIG",
+        "IN_PACKED", "IN_HRP", "IN_SHIPPED_LPNS", "IN_STAFFING",
+        "IN_TARGETS_DAILY", "IN_AUDIT_LOG",
         "T_DISPATCH_KPI", "T_DISPATCH_DAILY",
         "ACTION_HRP", "ACTION_PACKED",
         "HISTORY", "DATA_QUALITY"
