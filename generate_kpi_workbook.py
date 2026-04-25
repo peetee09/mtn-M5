@@ -33,6 +33,7 @@ from __future__ import annotations
 import datetime
 import io
 import zipfile
+from pathlib import Path
 from typing import List
 
 from openpyxl import Workbook
@@ -1121,31 +1122,35 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsm") -> None:
     wb = Workbook()
 
     # openpyxl determines the OOXML content type from wb.vba_archive, not from
-    # the file extension.  Without a vba_archive it writes the plain-xlsx
-    # content type even when the output path ends in .xlsm, which causes Excel
-    # to flag the file as corrupt and refuse to open it.
+    # the file extension.  For .xlsm output, without a vba_archive openpyxl
+    # writes the plain-xlsx content type, which causes Excel to flag the file
+    # as corrupt and refuse to open it.
     #
-    # Setting vba_archive to a minimal stub (two required entries, no actual
-    # VBA binary) is enough to make openpyxl emit the correct
-    # "application/vnd.ms-excel.sheet.macroEnabled.main+xml" content type.
-    # _merge_vba() only copies files whose paths match xl/vba, vmlDrawing, etc.,
-    # so the stub entries never appear in the output archive.
-    _stub = io.BytesIO()
-    with zipfile.ZipFile(_stub, "w") as _z:
-        _z.writestr(
-            "[Content_Types].xml",
-            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-            "</Types>",
-        )
-        _z.writestr(
-            "_rels/.rels",
-            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            "</Relationships>",
-        )
-    _stub.seek(0)
-    wb.vba_archive = zipfile.ZipFile(_stub, "r")
+    # When output_path ends with .xlsm, set vba_archive to a minimal stub
+    # (two required entries, no actual VBA binary) so openpyxl emits the
+    # correct "application/vnd.ms-excel.sheet.macroEnabled.main+xml" content
+    # type.  _merge_vba() only copies files whose paths match xl/vba,
+    # vmlDrawing, etc., so the stub entries never appear in the output archive.
+    #
+    # For .xlsx (or any other extension), leave vba_archive unset so the plain
+    # xlsx content type is written — matching the extension correctly.
+    if Path(output_path).suffix.lower() == ".xlsm":
+        _stub = io.BytesIO()
+        with zipfile.ZipFile(_stub, "w") as _z:
+            _z.writestr(
+                "[Content_Types].xml",
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                "</Types>",
+            )
+            _z.writestr(
+                "_rels/.rels",
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                "</Relationships>",
+            )
+        _stub.seek(0)
+        wb.vba_archive = zipfile.ZipFile(_stub, "r")
 
     # Remove default sheet
     if "Sheet" in wb.sheetnames:
@@ -1189,6 +1194,8 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsm") -> None:
             wb.move_sheet(name, offset=idx - current_pos)
 
     wb.save(output_path)
+    if wb.vba_archive is not None:
+        wb.vba_archive.close()
     print(f"Workbook saved: {output_path}")
     print(f"Unprotect password: {UNPROTECT_PW}")
     print("\nSheets created:")
