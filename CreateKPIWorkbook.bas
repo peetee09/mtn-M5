@@ -515,10 +515,7 @@ Private Sub BuildT_DISPATCH_KPI(wb As Workbook)
         "=COUNTIFS(tblShipped[BusinessDate],[@BusinessDate],tblShipped[ShiftName],[@ShiftName])"
     tbl.ListColumns("TotalStaff").DataBodyRange(1).Formula = _
         "=SUMIFS(tblStaffing[StaffAvailable],tblStaffing[BusinessDate],[@BusinessDate],tblStaffing[ShiftName],[@ShiftName])"
-    ' TargetPerPerson: use IFERROR + INDEX/MATCH (Ctrl+Shift+Enter not needed inside structured refs)
-    tbl.ListColumns("TargetPerPerson").DataBodyRange(1).Formula = _
-        "=IFERROR(INDEX(tblTargetsDaily[TargetPerPersonPerShift],MATCH(1,(tblTargetsDaily[BusinessDate]=[@BusinessDate])*(tblTargetsDaily[ShiftName]=[@ShiftName]),0)),0)"
-    ' Array formula version for Excel 2016
+    ' TargetPerPerson: array formula for Excel 2016 (multi-criteria INDEX/MATCH)
     tbl.ListColumns("TargetPerPerson").DataBodyRange(1).FormulaArray = _
         "=IFERROR(INDEX(tblTargetsDaily[TargetPerPersonPerShift],MATCH(1,(tblTargetsDaily[BusinessDate]=[@BusinessDate])*(tblTargetsDaily[ShiftName]=[@ShiftName]),0)),0)"
 
@@ -765,8 +762,10 @@ Private Sub BuildDATA_QUALITY(wb As Workbook)
         ws.Cells(r + 4, 1).Value = checks(r, 0)
         ws.Cells(r + 4, 2).Value = "'" & checks(r, 1)   ' leading apostrophe forces Excel to store as display text, not an evaluated formula
         ws.Cells(r + 4, 3).Formula = checks(r, 1)        ' also evaluate
+        ' All Result formulas (COUNTIF / SUMPRODUCT) return 0 or a positive integer —
+        ' they can never return a negative value — so 0 = OK and >0 = WARNING.
         ws.Cells(r + 4, 4).Formula = _
-            "=IF(C" & (r + 4) & "=0,""OK"",IF(C" & (r + 4) & ">0,""WARNING"",""OK""))"
+            "=IF(C" & (r + 4) & "=0,""OK"",""WARNING"")"
 
         ' CF on Status
         With ws.Cells(r + 4, 4).FormatConditions.Add(xlCellValue, xlEqual, """WARNING""")
@@ -790,11 +789,12 @@ Private Sub BuildDASHBOARD(wb As Workbook)
     Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
     ws.Name = "DASHBOARD"
 
-    ' Background
-    ws.Cells.Interior.Color = RGB(30, 30, 30)
-    ws.Cells.Font.Color = COL_WHITE
+    ' Light-grey page background (Excel-style)
+    ws.Cells.Interior.Color = RGB(242, 242, 242)
+    ws.Cells.Font.Color = RGB(51, 51, 51)
 
-    ' Title
+    ' ── Row 1: Title bar ──────────────────────────────────────────────────────
+    ws.Rows(1).RowHeight = 36
     With ws.Range("A1:N1")
         .Merge
         .Value = "WAREHOUSE / DISPATCH KPI DASHBOARD"
@@ -803,111 +803,294 @@ Private Sub BuildDASHBOARD(wb As Workbook)
         .Font.Color = COL_WHITE
         .Interior.Color = COL_HEADER
         .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
     End With
 
-    ws.Range("A2").Value = "Last Refreshed:"
-    ws.Range("B2").Formula = "=TEXT(NOW(),""dd/mm/yyyy hh:mm"")"
-    ws.Range("B2").Font.Bold = True
+    ' ── Row 2: Meta / last-refreshed bar ─────────────────────────────────────
+    ws.Rows(2).RowHeight = 18
+    Dim subBG As Long: subBG = RGB(236, 240, 247)
+    With ws.Range("A2:C2")
+        .Merge
+        .Value = "Last Refreshed:"
+        .Font.Bold = True: .Font.Size = 9: .Font.Color = RGB(102, 102, 102)
+        .Interior.Color = subBG: .HorizontalAlignment = xlRight: .VerticalAlignment = xlCenter
+    End With
+    With ws.Range("D2:G2")
+        .Merge
+        .Formula = "=TEXT(NOW(),""dd/mm/yyyy hh:mm"")"
+        .Font.Bold = True: .Font.Size = 9: .Font.Color = RGB(0, 112, 192)
+        .Interior.Color = subBG: .HorizontalAlignment = xlLeft: .VerticalAlignment = xlCenter
+    End With
+    With ws.Range("H2:N2")
+        .Merge
+        .Value = "Warehouse / Dispatch KPI System  v0.0.1-beta"
+        .Font.Italic = True: .Font.Size = 9: .Font.Color = RGB(102, 102, 102)
+        .Interior.Color = subBG: .HorizontalAlignment = xlRight: .VerticalAlignment = xlCenter
+    End With
 
-    ' --- KPI Cards (rows 4-9) ------------------------------------------------
-    ' Card: HRP Open Count
-    Call MakeKPICard(ws, "B4:D7", "HRP OPEN ITEMS", _
+    ' Row 3: thin visual spacer
+    ws.Rows(3).RowHeight = 6
+
+    ' ── Row 4: Section header "KPI OVERVIEW" ─────────────────────────────────
+    ws.Rows(4).RowHeight = 20
+    Call MakeSectionHeader(ws, "A4:N4", "  KPI OVERVIEW", RGB(46, 64, 87))
+
+    ' ── Rows 5-8: KPI cards — attention/alert row ────────────────────────────
+    Call MakeKPICard(ws, 5, 2, "HRP OPEN ITEMS", _
         "=COUNTIF(tblHRP[IncludeInHRP],TRUE)", COL_RED)
-    ' Card: Packed Overdue
-    Call MakeKPICard(ws, "F4:H7", "PACKED OVERDUE", _
+    Call MakeKPICard(ws, 5, 6, "PACKED OVERDUE", _
         "=COUNTIF(tblPacked[ActionFlag],TRUE)", COL_RED)
-    ' Card: Dispatch Performance Today
-    Call MakeKPICard(ws, "J4:L7", "DISPATCH PERF TODAY", _
-        "=IFERROR(TEXT(SUMIF(tblDispatchDaily[BusinessDate],TODAY(),tblDispatchDaily[DailyPerformancePct]),""0.0%""),""N/A"")", _
-        COL_GREEN)
-    ' Card: Duplicate LPNs
-    Call MakeKPICard(ws, "B9:D12", "DUPLICATE LPNs", _
+    ' Fixed: INDEX/MATCH raises #N/A when no row in tblDispatchDaily matches
+    ' today's date, which IFERROR catches and displays as "N/A".  The previous
+    ' SUMIF returned 0 for an unmatched date, causing TEXT to show "0.0%"
+    ' (a misleading result when no data has been entered for today).
+    Call MakeKPICard(ws, 5, 10, "DISPATCH PERF TODAY", _
+        "=IFERROR(TEXT(INDEX(tblDispatchDaily[DailyPerformancePct]," & _
+        "MATCH(TODAY(),tblDispatchDaily[BusinessDate],0)),""0.0%""),""N/A"")", _
+        RGB(0, 112, 192))
+
+    ' ── Rows 9-12: KPI cards — operations row ────────────────────────────────
+    Call MakeKPICard(ws, 9, 2, "DUPLICATE LPNs", _
         "=COUNTIF(tblShipped[DupFlag],TRUE)", COL_AMBER)
-    ' Card: Staff Today
-    Call MakeKPICard(ws, "F9:H12", "STAFF TODAY", _
+    Call MakeKPICard(ws, 9, 6, "STAFF TODAY", _
         "=SUMIF(tblDispatchKPI[BusinessDate],TODAY(),tblDispatchKPI[TotalStaff])", _
         RGB(0, 112, 192))
-    ' Card: Cartons Shipped Today
-    Call MakeKPICard(ws, "J9:L12", "CARTONS SHIPPED TODAY", _
+    Call MakeKPICard(ws, 9, 10, "CARTONS SHIPPED TODAY", _
         "=SUMIF(tblDispatchKPI[BusinessDate],TODAY(),tblDispatchKPI[ShippedCartons])", _
-        RGB(0, 112, 192))
+        COL_GREEN)
 
-    ' --- Instruction area for charts -----------------------------------------
-    ws.Range("A14").Value = "CHARTS AREA"
-    ws.Range("A14").Font.Bold = True
-    ws.Range("A14").Font.Size = 12
-    ws.Range("A14").Font.Color = COL_WHITE
+    ' Row 13: spacer
+    ws.Rows(13).RowHeight = 8
 
-    ws.Range("A15").Value = "After adding data to the input sheets, use the 'Refresh All' button to update PivotTables and charts."
-    ws.Range("A15").Font.Italic = True
-    ws.Range("A15").Font.Color = RGB(200, 200, 200)
+    ' ── Row 14: Section header "PERFORMANCE SUMMARY" ─────────────────────────
+    ws.Rows(14).RowHeight = 20
+    Call MakeSectionHeader(ws, "A14:N14", "  PERFORMANCE SUMMARY  (Most Recent Shifts)", RGB(46, 64, 87))
 
-    ' Slicer / filter guide
-    ws.Range("A17").Value = "FILTER GUIDE:"
-    ws.Range("A17").Font.Bold = True
-    ws.Range("A18").Value = "Use Excel AutoFilter on T_DISPATCH_KPI for ShiftName, BusinessDate, or RAG filters."
-    ws.Range("A19").Value = "For pivot-based slicers: Insert PivotTable from tblDispatchKPI on any blank sheet, then Insert > Slicer."
+    ' Row 15: table column headers
+    ws.Rows(15).RowHeight = 16
+    Dim perfHdrs() As String
+    perfHdrs = Split("Date,Shift,Shipped,Expected,Perf %,RAG", ",")
+    Dim ph As Integer
+    For ph = 0 To 5
+        ws.Cells(15, ph + 1).Value = perfHdrs(ph)
+        ws.Cells(15, ph + 1).Font.Bold = True
+        ws.Cells(15, ph + 1).Font.Color = COL_WHITE
+        ws.Cells(15, ph + 1).Font.Size = 9
+        ws.Cells(15, ph + 1).Interior.Color = RGB(0, 112, 192)
+        ws.Cells(15, ph + 1).HorizontalAlignment = xlCenter
+        ws.Cells(15, ph + 1).Borders.LineStyle = xlContinuous
+    Next ph
 
-    ' Build summary PivotTable source area for chart
-    Call BuildDispatchPivotForChart(wb, ws)
+    ' Rows 16-18: 3 most-recent rows from tblDispatchKPI (newest first)
+    Dim rowOff As Integer
+    For rowOff = 0 To 2
+        Dim rn As Long: rn = 16 + rowOff
+        Dim idxExpr As String
+        idxExpr = "ROWS(tblDispatchKPI[BusinessDate])-" & rowOff
+        ws.Rows(rn).RowHeight = 14
+        Dim rowBG As Long
+        If rowOff Mod 2 = 0 Then rowBG = COL_WHITE Else rowBG = RGB(247, 247, 247)
 
-    ws.Columns("A:N").ColumnWidth = 14
+        ws.Cells(rn, 1).Formula = "=IFERROR(TEXT(INDEX(tblDispatchKPI[BusinessDate]," & idxExpr & "),""dd/mm/yyyy""),"""")"
+        ws.Cells(rn, 2).Formula = "=IFERROR(INDEX(tblDispatchKPI[ShiftName]," & idxExpr & "),"""")"
+        ws.Cells(rn, 3).Formula = "=IFERROR(INDEX(tblDispatchKPI[ShippedCartons]," & idxExpr & "),"""")"
+        ws.Cells(rn, 4).Formula = "=IFERROR(INDEX(tblDispatchKPI[ExpectedCartons]," & idxExpr & "),"""")"
+        ws.Cells(rn, 5).Formula = "=IFERROR(TEXT(INDEX(tblDispatchKPI[PerformancePct]," & idxExpr & "),""0.0%""),"""")"
+        ws.Cells(rn, 6).Formula = "=IFERROR(INDEX(tblDispatchKPI[RAG]," & idxExpr & "),"""")"
+
+        Dim col As Integer
+        For col = 1 To 6
+            ws.Cells(rn, col).Font.Size = 9
+            ws.Cells(rn, col).Interior.Color = rowBG
+            ws.Cells(rn, col).HorizontalAlignment = xlCenter
+            ws.Cells(rn, col).Borders.LineStyle = xlContinuous
+        Next col
+
+        ' RAG conditional formatting
+        With ws.Cells(rn, 6).FormatConditions.Add(xlCellValue, xlEqual, """Green""")
+            .Interior.Color = COL_GREEN: .Font.Color = COL_WHITE
+        End With
+        With ws.Cells(rn, 6).FormatConditions.Add(xlCellValue, xlEqual, """Amber""")
+            .Interior.Color = COL_AMBER
+        End With
+        With ws.Cells(rn, 6).FormatConditions.Add(xlCellValue, xlEqual, """Red""")
+            .Interior.Color = COL_RED: .Font.Color = COL_WHITE
+        End With
+    Next rowOff
+
+    ' Row 19: spacer
+    ws.Rows(19).RowHeight = 8
+
+    ' ── Row 20: RAG LEGEND section ────────────────────────────────────────────
+    ws.Rows(20).RowHeight = 20
+    Call MakeSectionHeader(ws, "A20:N20", "  RAG LEGEND", RGB(68, 114, 196))
+
+    ' Row 21: legend colour blocks
+    ws.Rows(21).RowHeight = 16
+    With ws.Range("B21:D21")
+        .Merge: .Value = "GREEN": .Font.Bold = True: .Font.Size = 9: .Font.Color = COL_WHITE
+        .Interior.Color = COL_GREEN: .HorizontalAlignment = xlCenter: .Borders.LineStyle = xlContinuous
+    End With
+    With ws.Range("F21:H21")
+        .Merge: .Value = "AMBER": .Font.Bold = True: .Font.Size = 9: .Font.Color = RGB(51, 51, 51)
+        .Interior.Color = COL_AMBER: .HorizontalAlignment = xlCenter: .Borders.LineStyle = xlContinuous
+    End With
+    With ws.Range("J21:L21")
+        .Merge: .Value = "RED": .Font.Bold = True: .Font.Size = 9: .Font.Color = COL_WHITE
+        .Interior.Color = COL_RED: .HorizontalAlignment = xlCenter: .Borders.LineStyle = xlContinuous
+    End With
+
+    ' Row 22: legend descriptions
+    ws.Rows(22).RowHeight = 14
+    With ws.Range("B22:D22")
+        .Merge: .Value = "Dispatch Performance >= 100%"
+        .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
+        .HorizontalAlignment = xlCenter
+    End With
+    With ws.Range("F22:H22")
+        .Merge: .Value = "90% <= Performance < 100%"
+        .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
+        .HorizontalAlignment = xlCenter
+    End With
+    With ws.Range("J22:L22")
+        .Merge: .Value = "Performance < 90%"
+        .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
+        .HorizontalAlignment = xlCenter
+    End With
+
+    ' Row 23: spacer
+    ws.Rows(23).RowHeight = 8
+
+    ' ── Row 24: QUICK NAVIGATION section ─────────────────────────────────────
+    ws.Rows(24).RowHeight = 20
+    Call MakeSectionHeader(ws, "A24:N24", "  QUICK NAVIGATION", RGB(89, 89, 89))
+
+    ' Row 25: navigation links (using hyperlinks)
+    ws.Rows(25).RowHeight = 16
+    Dim navItems(6, 1) As String
+    navItems(0, 0) = "IN_PACKED":       navItems(0, 1) = "#IN_PACKED!A1"
+    navItems(1, 0) = "IN_HRP":          navItems(1, 1) = "#IN_HRP!A1"
+    navItems(2, 0) = "IN_SHIPPED_LPNS": navItems(2, 1) = "#IN_SHIPPED_LPNS!A1"
+    navItems(3, 0) = "IN_STAFFING":     navItems(3, 1) = "#IN_STAFFING!A1"
+    navItems(4, 0) = "T_DISPATCH_KPI":  navItems(4, 1) = "#T_DISPATCH_KPI!A1"
+    navItems(5, 0) = "DATA_QUALITY":    navItems(5, 1) = "#DATA_QUALITY!A1"
+    navItems(6, 0) = "HISTORY":         navItems(6, 1) = "#HISTORY!A1"
+
+    Dim ni As Integer
+    For ni = 0 To 6
+        Dim nc As Range
+        Set nc = ws.Range(ws.Cells(25, (ni * 2) + 2), ws.Cells(25, (ni * 2) + 3))
+        nc.Merge
+        nc.Value = ">> " & navItems(ni, 0)
+        nc.Interior.Color = COL_WHITE
+        nc.Font.Bold = True: nc.Font.Size = 8: nc.Font.Color = RGB(0, 70, 170)
+        nc.Font.Underline = xlUnderlineStyleSingle
+        nc.HorizontalAlignment = xlCenter: nc.VerticalAlignment = xlCenter
+        nc.Borders.LineStyle = xlContinuous
+        ws.Hyperlinks.Add Anchor:=nc, Address:="", SubAddress:=navItems(ni, 1), _
+            TextToDisplay:=">> " & navItems(ni, 0)
+    Next ni
+
+    ' Row 26: spacer
+    ws.Rows(26).RowHeight = 8
+
+    ' ── Row 27: CONTROLS section ──────────────────────────────────────────────
+    ws.Rows(27).RowHeight = 20
+    Call MakeSectionHeader(ws, "A27:N27", "  CONTROLS  (VBA macro buttons)", COL_HEADER)
+
+    ' Row 28: button label cells
+    ws.Rows(28).RowHeight = 18
+    ws.Rows(29).RowHeight = 24
+
+    Dim btnCols() As Integer: ReDim btnCols(2)
+    btnCols(0) = 2: btnCols(1) = 6: btnCols(2) = 10
+    Dim btnNames(2) As String
+    btnNames(0) = "[ REFRESH ALL ]"
+    btnNames(1) = "[ TAKE DAILY SNAPSHOT ]"
+    btnNames(2) = "[ POPULATE ACTION SHEETS ]"
+    Dim btnDescs(2) As String
+    btnDescs(0) = "Recalculates all formulas & refreshes PivotTables"
+    btnDescs(1) = "Appends current KPIs to the HISTORY sheet"
+    btnDescs(2) = "Copies filtered data to ACTION_HRP and ACTION_PACKED"
+
+    Dim bi As Integer
+    For bi = 0 To 2
+        With ws.Range(ws.Cells(28, btnCols(bi)), ws.Cells(28, btnCols(bi) + 2))
+            .Merge: .Value = btnNames(bi)
+            .Font.Bold = True: .Font.Size = 9: .Font.Color = COL_HEADER
+            .Interior.Color = RGB(255, 244, 204)
+            .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+            .Borders.LineStyle = xlContinuous
+        End With
+        With ws.Range(ws.Cells(29, btnCols(bi)), ws.Cells(29, btnCols(bi) + 2))
+            .Merge: .Value = btnDescs(bi)
+            .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
+            .HorizontalAlignment = xlCenter: .WrapText = True
+        End With
+    Next bi
+
+    ws.Columns("A:A").ColumnWidth = 2
+    ws.Columns("B:N").ColumnWidth = 15
     ws.Tab.Color = RGB(0, 112, 192)
 End Sub
 
-' Helper: create a KPI card
-Private Sub MakeKPICard(ws As Worksheet, addr As String, title As String, _
-                         formula As String, bgColor As Long)
-    Dim rng As Range
-    Set rng = ws.Range(addr)
-    rng.Merge
-    With rng
+' Helper: full-width section header bar
+Private Sub MakeSectionHeader(ws As Worksheet, addr As String, _
+                               text As String, bgColor As Long)
+    With ws.Range(addr)
+        .Merge
+        .Value = text
+        .Font.Bold = True: .Font.Size = 11: .Font.Color = COL_WHITE
         .Interior.Color = bgColor
-        .Font.Color = COL_WHITE
-        .Font.Bold = True
-        .Font.Size = 20
-        .HorizontalAlignment = xlCenter
-        .VerticalAlignment = xlCenter
-        .Formula = formula
+        .HorizontalAlignment = xlLeft: .VerticalAlignment = xlCenter
+        .IndentLevel = 1
+    End With
+End Sub
+
+' Helper: Excel-style KPI card (4 rows: 1 title bar + 3 value rows)
+'   startRow : first row of the card (the title bar row)
+'   startCol : first column of the card (card is 3 columns wide)
+'   accentColor : the accent colour used for the title bar, number text, and border
+Private Sub MakeKPICard(ws As Worksheet, startRow As Long, startCol As Integer, _
+                         title As String, formula As String, accentColor As Long)
+    Dim endCol As Integer: endCol = startCol + 2
+
+    ' Title bar (1 row)
+    ws.Rows(startRow).RowHeight = 18
+    With ws.Range(ws.Cells(startRow, startCol), ws.Cells(startRow, endCol))
+        .Merge
+        .Value = title
+        .Font.Bold = True: .Font.Size = 9: .Font.Color = COL_WHITE
+        .Interior.Color = accentColor
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
     End With
 
-    ' Title one row above
-    Dim titleRow As Long
-    titleRow = rng.Row - 1
-    Dim titleRange As Range
-    Set titleRange = ws.Range(ws.Cells(titleRow, rng.Column), _
-                              ws.Cells(titleRow, rng.Column + rng.Columns.Count - 1))
-    titleRange.Merge
-    titleRange.Value = title
-    titleRange.Font.Bold = True
-    titleRange.Font.Size = 9
-    titleRange.Font.Color = RGB(200, 200, 200)
-    titleRange.HorizontalAlignment = xlCenter
-    titleRange.Interior.Color = RGB(50, 50, 50)
+    ' Value area (3 rows merged, white background, large coloured number)
+    ws.Rows(startRow + 1).RowHeight = 42
+    ws.Rows(startRow + 2).RowHeight = 8
+    ws.Rows(startRow + 3).RowHeight = 8
+    With ws.Range(ws.Cells(startRow + 1, startCol), ws.Cells(startRow + 3, endCol))
+        .Merge
+        .Formula = formula
+        .Font.Bold = True: .Font.Size = 24: .Font.Color = accentColor
+        .Interior.Color = COL_WHITE
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+    End With
+
+    ' Accent-coloured thin border around the whole card
+    Dim cardRng As Range
+    Set cardRng = ws.Range(ws.Cells(startRow, startCol), ws.Cells(startRow + 3, endCol))
+    With cardRng.Borders(xlEdgeLeft):   .LineStyle = xlContinuous: .Color = accentColor: End With
+    With cardRng.Borders(xlEdgeRight):  .LineStyle = xlContinuous: .Color = accentColor: End With
+    With cardRng.Borders(xlEdgeTop):    .LineStyle = xlContinuous: .Color = accentColor: End With
+    With cardRng.Borders(xlEdgeBottom): .LineStyle = xlContinuous: .Color = accentColor: End With
 End Sub
 
 ' Build a simple pivot-ready range to enable charting
 Private Sub BuildDispatchPivotForChart(wb As Workbook, dashWs As Worksheet)
-    ' Place a small summary table starting at row 21 for charting
-    dashWs.Range("A21").Value = "DATE"
-    dashWs.Range("B21").Value = "SHIFT"
-    dashWs.Range("C21").Value = "SHIPPED"
-    dashWs.Range("D21").Value = "EXPECTED"
-    dashWs.Range("E21").Value = "PERF%"
-
-    dashWs.Range("A21:E21").Font.Bold = True
-    dashWs.Range("A21:E21").Interior.Color = COL_HEADER
-    dashWs.Range("A21:E21").Font.Color = COL_WHITE
-
-    ' Row 22: reference from tblDispatchKPI row 1 (dynamic would need VBA refresh)
-    dashWs.Range("A22").Formula = "=IF(ROWS(tblDispatchKPI[BusinessDate])>0,INDEX(tblDispatchKPI[BusinessDate],1),"""")"
-    dashWs.Range("B22").Formula = "=IF(ROWS(tblDispatchKPI[ShiftName])>0,INDEX(tblDispatchKPI[ShiftName],1),"""")"
-    dashWs.Range("C22").Formula = "=IF(ROWS(tblDispatchKPI[ShippedCartons])>0,INDEX(tblDispatchKPI[ShippedCartons],1),0)"
-    dashWs.Range("D22").Formula = "=IF(ROWS(tblDispatchKPI[ExpectedCartons])>0,INDEX(tblDispatchKPI[ExpectedCartons],1),0)"
-    dashWs.Range("E22").Formula = "=IF(ROWS(tblDispatchKPI[PerformancePct])>0,INDEX(tblDispatchKPI[PerformancePct],1),0)"
-    dashWs.Range("E22").NumberFormat = "0.0%"
-
-    dashWs.Range("A22").NumberFormat = "dd/mm/yyyy"
+    ' Kept for backward compatibility; the Performance Summary table on the
+    ' dashboard now shows the same data via INDEX formulas. This sub is no
+    ' longer called from BuildDASHBOARD but is left here if needed.
 End Sub
 
 '================================================================================
@@ -935,23 +1118,29 @@ Private Sub AddButtons(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets("DASHBOARD")
 
+    ' Use Rows(28).Top to get the exact pixel position of row 28 dynamically,
+    ' so this remains correct if any row heights above it change.
+    Dim btnTop As Double
+    btnTop = ws.Rows(28).Top
+    Const BTN_H As Long = 30
+
     ' Refresh All button
     Dim btn1 As Button
-    Set btn1 = ws.Buttons.Add(10, 550, 140, 30)
+    Set btn1 = ws.Buttons.Add(10, btnTop, 140, BTN_H)
     btn1.Caption = "REFRESH ALL"
     btn1.OnAction = "RefreshAll"
     btn1.Font.Bold = True
 
     ' Take Daily Snapshot button
     Dim btn2 As Button
-    Set btn2 = ws.Buttons.Add(170, 550, 200, 30)
+    Set btn2 = ws.Buttons.Add(170, btnTop, 200, BTN_H)
     btn2.Caption = "TAKE DAILY SNAPSHOT"
     btn2.OnAction = "TakeDailySnapshot"
     btn2.Font.Bold = True
 
     ' Populate Action Sheets button
     Dim btn3 As Button
-    Set btn3 = ws.Buttons.Add(390, 550, 200, 30)
+    Set btn3 = ws.Buttons.Add(390, btnTop, 200, BTN_H)
     btn3.Caption = "POPULATE ACTION SHEETS"
     btn3.OnAction = "PopulateActionSheets"
     btn3.Font.Bold = True
