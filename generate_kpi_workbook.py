@@ -10,7 +10,17 @@ Requirements:
 
 Usage:
     python generate_kpi_workbook.py
-    # -> creates  KPI_Workbook.xlsx  in the current directory
+    # -> creates  KPI_Workbook.xlsm  in the current directory
+
+Note on macros:
+    openpyxl cannot embed VBA code.  The output file uses the .xlsm
+    extension (macro-enabled container) so that Excel does not strip the
+    format, but the file contains NO macro code.  To get working buttons
+    and RefreshAll / TakeDailySnapshot macros, open the generated file in
+    Excel, paste CreateKPIWorkbook.bas into the VBA editor, and save.
+    Alternatively, run CreateKPIWorkbook.bas directly from the VBA editor
+    inside an xlsm-hosted workbook — that path both builds and saves the
+    file with macros fully embedded.
 
 Compatibility: Excel 2016 and later.
 Unprotect password: KPI2024
