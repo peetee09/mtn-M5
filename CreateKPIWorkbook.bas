@@ -1252,10 +1252,10 @@ Private Sub BuildCHARTS(wb As Workbook)
         .ChartType = xlLineMarkers
         .HasTitle = True
         .ChartTitle.Text = "Daily Dispatch Performance % Trend"
-        ' Add series manually so we can use full-column references (auto-expand)
+        ' Add series manually so we can use worksheet-spanning references without including headers
         .SeriesCollection.NewSeries
-        .SeriesCollection(1).Values  = wsDaily.Range("E:E")
-        .SeriesCollection(1).XValues = wsDaily.Range("A:A")
+        .SeriesCollection(1).Values  = wsDaily.Range("E2:E1048576")
+        .SeriesCollection(1).XValues = wsDaily.Range("A2:A1048576")
         .SeriesCollection(1).Name    = "Performance %"
         .Axes(xlValue).HasTitle = True
         .Axes(xlValue).AxisTitle.Text = "Performance %"
