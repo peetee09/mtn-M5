@@ -979,7 +979,8 @@ Private Sub BuildDASHBOARD(wb As Workbook)
     Dim ni As Integer
     For ni = 0 To 6
         Dim nc As Range
-        Set nc = ws.Cells(25, ni + 1)
+        Set nc = ws.Range(ws.Cells(25, (ni * 2) + 2), ws.Cells(25, (ni * 2) + 3))
+        nc.Merge
         nc.Value = ">> " & navItems(ni, 0)
         nc.Interior.Color = COL_WHITE
         nc.Font.Bold = True: nc.Font.Size = 8: nc.Font.Color = RGB(0, 70, 170)
