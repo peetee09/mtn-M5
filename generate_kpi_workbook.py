@@ -359,13 +359,49 @@ def build_in_targets(wb: Workbook) -> None:
     _autofit(ws)
 
 
+def build_in_audits(wb: Workbook) -> None:
+    """IN_AUDITS – log of audit counts per auditor per shift."""
+    ws = wb.create_sheet("IN_AUDITS")
+    ws.sheet_properties.tabColor = "00B050"
+
+    cols = ["BusinessDate", "ShiftName", "AuditorName",
+            "AuditCount", "PassCount", "FailCount", "PassRate", "Notes"]
+    header_style(ws, 1, cols)
+
+    ws.cell(row=2, column=1, value=datetime.date.today())
+    ws.cell(row=2, column=2, value="Day")
+    ws.cell(row=2, column=3, value="Auditor1")
+    ws.cell(row=2, column=4, value=20)
+    ws.cell(row=2, column=5, value=18)
+    ws.cell(row=2, column=6).value = "=[@AuditCount]-[@PassCount]"
+    ws.cell(row=2, column=7).value = "=IFERROR([@PassCount]/[@AuditCount],0)"
+    ws.cell(row=2, column=7).number_format = "0.0%"
+    ws.cell(row=2, column=8, value="")
+
+    add_table(ws, "A1:H2", "tblAudits", "TableStyleMedium4")
+    add_shift_validation(ws, "B")
+
+    ws.conditional_formatting.add(
+        "G2:G10000",
+        ColorScaleRule(
+            start_type="num", start_value=0, start_color="FFFF0000",
+            mid_type="num", mid_value=0.8, mid_color="FFFFA500",
+            end_type="num", end_value=1, end_color="FF50C878"
+        )
+    )
+
+    freeze(ws)
+    _autofit(ws)
+
+
 def build_t_dispatch_kpi(wb: Workbook) -> None:
     ws = wb.create_sheet("T_DISPATCH_KPI")
     ws.sheet_properties.tabColor = "FFC000"
 
     cols = [
         "BusinessDate", "ShiftName", "ShippedCartons", "TotalStaff",
-        "TargetPerPerson", "ExpectedCartons", "PerformancePct", "RAG"
+        "TargetPerPerson", "ExpectedCartons", "PerformancePct", "RAG",
+        "AuditCount", "AuditTarget", "AuditPct", "WeekNumber", "Month"
     ]
     header_style(ws, 1, cols)
 
@@ -384,10 +420,18 @@ def build_t_dispatch_kpi(wb: Workbook) -> None:
     ws.cell(row=2, column=7).value = "=IFERROR([@ShippedCartons]/[@ExpectedCartons],0)"
     ws.cell(row=2, column=8).value = \
         '=IF([@PerformancePct]>=1,"Green",IF([@PerformancePct]>=0.9,"Amber","Red"))'
+    ws.cell(row=2, column=9).value = \
+        "=SUMIFS(tblAudits[AuditCount],tblAudits[BusinessDate],[@BusinessDate],tblAudits[ShiftName],[@ShiftName])"
+    ws.cell(row=2, column=10).value = \
+        '=IFERROR(INDEX(tblConfig_Rules[Value],MATCH("Audit_SampleSize",tblConfig_Rules[RuleName],0)),20)'
+    ws.cell(row=2, column=11).value = "=IFERROR([@AuditCount]/[@AuditTarget],0)"
+    ws.cell(row=2, column=12).value = "=IFERROR(WEEKNUM([@BusinessDate],2),\"\")"
+    ws.cell(row=2, column=13).value = '=IFERROR(TEXT([@BusinessDate],"mmm-yy"),"")'
 
     ws.cell(row=2, column=7).number_format = "0.0%"
+    ws.cell(row=2, column=11).number_format = "0.0%"
 
-    add_table(ws, "A1:H2", "tblDispatchKPI", "TableStyleMedium2")
+    add_table(ws, "A1:M2", "tblDispatchKPI", "TableStyleMedium2")
 
     # RAG conditional formatting
     rag_col = "H"
@@ -398,6 +442,16 @@ def build_t_dispatch_kpi(wb: Workbook) -> None:
                  dxf=DifferentialStyle(fill=fill(hex_color)))
         )
 
+    # AuditPct colour scale (col K)
+    ws.conditional_formatting.add(
+        "K2:K10000",
+        ColorScaleRule(
+            start_type="num", start_value=0, start_color="FFFF0000",
+            mid_type="num", mid_value=0.5, mid_color="FFFFA500",
+            end_type="num", end_value=1, end_color="FF50C878"
+        )
+    )
+
     freeze(ws)
     _autofit(ws)
 
@@ -406,7 +460,8 @@ def build_t_dispatch_daily(wb: Workbook) -> None:
     ws = wb.create_sheet("T_DISPATCH_DAILY")
     ws.sheet_properties.tabColor = "FFC000"
 
-    cols = ["BusinessDate", "TotalShipped", "TotalStaff", "TotalExpected", "DailyPerformancePct"]
+    cols = ["BusinessDate", "TotalShipped", "TotalStaff", "TotalExpected",
+            "DailyPerformancePct", "WeekNumber"]
     header_style(ws, 1, cols)
 
     ws.cell(row=2, column=1, value=datetime.date.today())
@@ -418,8 +473,9 @@ def build_t_dispatch_daily(wb: Workbook) -> None:
         "=SUMIF(tblDispatchKPI[BusinessDate],[@BusinessDate],tblDispatchKPI[ExpectedCartons])"
     ws.cell(row=2, column=5).value = "=IFERROR([@TotalShipped]/[@TotalExpected],0)"
     ws.cell(row=2, column=5).number_format = "0.0%"
+    ws.cell(row=2, column=6).value = "=IFERROR(WEEKNUM([@BusinessDate],2),\"\")"
 
-    add_table(ws, "A1:E2", "tblDispatchDaily", "TableStyleMedium2")
+    add_table(ws, "A1:F2", "tblDispatchDaily", "TableStyleMedium2")
 
     freeze(ws)
     _autofit(ws)
@@ -495,13 +551,70 @@ def build_history(wb: Workbook) -> None:
         "SnapshotTimestamp", "BusinessDate", "ShiftName",
         "ShippedCartons", "TotalStaff", "ExpectedCartons",
         "PerformancePct", "RAG",
-        "HRP_OpenCount", "Packed_OverdueCount"
+        "HRP_OpenCount", "Packed_OverdueCount",
+        "WeekNumber", "AuditCount", "HRP_CostAtRisk", "Packed_OverdueRetailValue"
     ]
     header_style(ws, 1, cols)
     # Seed an empty row so the table range has at least 2 rows (openpyxl requirement)
     for c_idx in range(1, len(cols) + 1):
         ws.cell(row=2, column=c_idx, value="")
     add_table(ws, f"A1:{col_letter(len(cols))}2", "tblHistory", "TableStyleMedium2")
+    _autofit(ws)
+
+
+def build_weekly_summary(wb: Workbook) -> None:
+    """WEEKLY_SUMMARY – SUMPRODUCT aggregations from T_DISPATCH_DAILY by week."""
+    ws = wb.create_sheet("WEEKLY_SUMMARY")
+    ws.sheet_properties.tabColor = "0070C0"
+
+    ws["A1"] = "WEEKLY SUMMARY — aggregated from T_DISPATCH_DAILY"
+    ws["A1"].font = Font(bold=True, size=12, color=_hex_font_color(HEADER_HEX))
+    ws["A2"] = ("Seed one row per week. Formulas aggregate T_DISPATCH_DAILY by WeekNumber + Year. "
+                "Add rows for each new week.")
+    ws["A2"].font = Font(italic=True, color="808080")
+
+    cols = ["WeekNumber", "WeekYear", "WeekStartDate",
+            "TotalShipped", "TotalExpected", "WeeklyPerformancePct",
+            "TotalStaff", "DaysWithData"]
+    header_style(ws, 3, cols)
+
+    today = datetime.date.today()
+    week_start = today - datetime.timedelta(days=today.weekday())   # Monday
+    week_num = int(today.strftime("%W")) + 1  # approx ISO week
+
+    ws.cell(row=4, column=1, value=week_num)
+    ws.cell(row=4, column=2, value=today.year)
+    ws.cell(row=4, column=3, value=week_start)
+    ws.cell(row=4, column=4).value = (
+        "=SUMPRODUCT((WEEKNUM(tblDispatchDaily[BusinessDate],2)=A4)"
+        "*(YEAR(tblDispatchDaily[BusinessDate])=B4),tblDispatchDaily[TotalShipped])"
+    )
+    ws.cell(row=4, column=5).value = (
+        "=SUMPRODUCT((WEEKNUM(tblDispatchDaily[BusinessDate],2)=A4)"
+        "*(YEAR(tblDispatchDaily[BusinessDate])=B4),tblDispatchDaily[TotalExpected])"
+    )
+    ws.cell(row=4, column=6).value = "=IFERROR([@TotalShipped]/[@TotalExpected],0)"
+    ws.cell(row=4, column=6).number_format = "0.0%"
+    ws.cell(row=4, column=7).value = (
+        "=SUMPRODUCT((WEEKNUM(tblDispatchDaily[BusinessDate],2)=A4)"
+        "*(YEAR(tblDispatchDaily[BusinessDate])=B4),tblDispatchDaily[TotalStaff])"
+    )
+    ws.cell(row=4, column=8).value = (
+        "=SUMPRODUCT((WEEKNUM(tblDispatchDaily[BusinessDate],2)=A4)"
+        "*(YEAR(tblDispatchDaily[BusinessDate])=B4),(tblDispatchDaily[TotalShipped]>0)*1)"
+    )
+
+    add_table(ws, "A3:H4", "tblWeeklySummary", "TableStyleMedium2")
+
+    ws.conditional_formatting.add(
+        "F4:F10000",
+        ColorScaleRule(
+            start_type="num", start_value=0, start_color="FFFF0000",
+            mid_type="num", mid_value=0.9, mid_color="FFFFA500",
+            end_type="num", end_value=1, end_color="FF50C878"
+        )
+    )
+
     _autofit(ws)
 
 
@@ -534,6 +647,16 @@ def build_data_quality(wb: Workbook) -> None:
          "=COUNTIF(tblHRP[IncludeInHRP],TRUE)"),
         ("Packed items where ActionFlag=TRUE (overdue)",
          "=COUNTIF(tblPacked[ActionFlag],TRUE)"),
+        ("ExpectedCartons = 0 in KPI (missing targets or staffing)",
+         "=COUNTIF(tblDispatchKPI[ExpectedCartons],0)"),
+        ("PerformancePct > 120% (possible data entry error)",
+         '=COUNTIF(tblDispatchKPI[PerformancePct],">"&1.2)'),
+        ("No audit record for today (audit gap)",
+         "=IF(COUNTIF(tblAudits[BusinessDate],TODAY())=0,1,0)"),
+        ("Audit PassRate below 90% today",
+         '=COUNTIFS(tblAudits[BusinessDate],TODAY(),tblAudits[PassRate],"<"&0.9)'),
+        ("Missing targets for today in IN_TARGETS_DAILY",
+         "=IF(COUNTIF(tblTargetsDaily[BusinessDate],TODAY())=0,1,0)"),
     ]
 
     for r_off, (label, formula) in enumerate(checks, start=4):
@@ -565,8 +688,8 @@ def build_dashboard(wb: Workbook) -> None:
     ws = wb.create_sheet("DASHBOARD")
     ws.sheet_properties.tabColor = "0070C0"
 
-    # Dark background
-    for row in ws.iter_rows(min_row=1, max_row=60, min_col=1, max_col=14):
+    # Dark background (extend to row 80 to cover chart area)
+    for row in ws.iter_rows(min_row=1, max_row=80, min_col=1, max_col=14):
         for cell in row:
             cell.fill = fill(DARK_HEX)
             cell.font = Font(color=_hex_font_color(WHITE_HEX))
@@ -584,7 +707,7 @@ def build_dashboard(wb: Workbook) -> None:
     ws["B2"].value = f'=TEXT(NOW(),"dd/mm/yyyy hh:mm")'
     ws["B2"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
 
-    # KPI Cards
+    # ── Row 1 of KPI cards (rows 4-6, titles at row 3) ──────────────────────
     _kpi_card(ws, row=4, col=2, title="HRP OPEN ITEMS",
               formula="=COUNTIF(tblHRP[IncludeInHRP],TRUE)", bg=RED_HEX)
     _kpi_card(ws, row=4, col=6, title="PACKED OVERDUE",
@@ -592,6 +715,8 @@ def build_dashboard(wb: Workbook) -> None:
     _kpi_card(ws, row=4, col=10, title="DISPATCH PERF TODAY",
               formula='=IFERROR(TEXT(SUMIF(tblDispatchDaily[BusinessDate],TODAY(),tblDispatchDaily[DailyPerformancePct]),"0.0%"),"N/A")',
               bg=BLUE_HEX)
+
+    # ── Row 2 of KPI cards (rows 9-11, titles at row 8) ─────────────────────
     _kpi_card(ws, row=9, col=2, title="DUPLICATE LPNs",
               formula="=COUNTIF(tblShipped[DupFlag],TRUE)", bg=AMBER_HEX)
     _kpi_card(ws, row=9, col=6, title="STAFF TODAY",
@@ -601,38 +726,106 @@ def build_dashboard(wb: Workbook) -> None:
               formula="=SUMIF(tblDispatchKPI[BusinessDate],TODAY(),tblDispatchKPI[ShippedCartons])",
               bg=BLUE_HEX)
 
-    # Instructions
-    ws["A14"] = "CHARTS AREA"
-    ws["A14"].font = Font(bold=True, size=12, color=_hex_font_color(WHITE_HEX))
-    ws["A14"].fill = fill(DARK_HEX)
+    # ── Row 3 of KPI cards (rows 14-16, titles at row 13) ───────────────────
+    _kpi_card(ws, row=14, col=2, title="HRP COST AT RISK ($)",
+              formula="=SUMIF(tblHRP[IncludeInHRP],TRUE,tblHRP[COST_VALUE])",
+              bg=RED_HEX)
+    ws.cell(row=14, column=2).number_format = "$#,##0"
 
-    ws["A15"] = ("After adding data to the input sheets, use the 'Refresh All' button "
-                 "to update PivotTables and charts.")
-    ws["A15"].font = Font(italic=True, color="C8C8C8")
-    ws["A15"].fill = fill(DARK_HEX)
+    _kpi_card(ws, row=14, col=6, title="PACKED OVERDUE RETAIL ($)",
+              formula="=SUMIF(tblPacked[ActionFlag],TRUE,tblPacked[TOT_RETAIL])",
+              bg=RED_HEX)
+    ws.cell(row=14, column=6).number_format = "$#,##0"
 
-    ws["A17"] = "FILTER GUIDE:"
-    ws["A17"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
-    ws["A17"].fill = fill(DARK_HEX)
-    ws["A18"] = "Use Excel AutoFilter on T_DISPATCH_KPI for ShiftName / BusinessDate / RAG filters."
+    _kpi_card(ws, row=14, col=10, title="AUDITS COMPLETED TODAY",
+              formula="=SUMIF(tblAudits[BusinessDate],TODAY(),tblAudits[AuditCount])",
+              bg=BLUE_HEX)
+
+    # ── Charts section (rows 18+) ────────────────────────────────────────────
+    ws["A18"] = "CHARTS AREA"
+    ws["A18"].font = Font(bold=True, size=12, color=_hex_font_color(WHITE_HEX))
     ws["A18"].fill = fill(DARK_HEX)
-    ws["A19"] = "For pivot-based slicers: Insert PivotTable from tblDispatchKPI, then Insert > Slicer."
+
+    ws["A19"] = ("After adding data to the input sheets, use the 'Refresh All' button "
+                 "to update charts. Charts must be inserted manually in the Python version: "
+                 "select the RAG SUMMARY or T_DISPATCH_DAILY range, then Insert > Chart.")
+    ws["A19"].font = Font(italic=True, color="C8C8C8")
     ws["A19"].fill = fill(DARK_HEX)
 
-    # Instruction note about buttons
-    ws["A21"] = "BUTTONS (add manually or run the VBA RefreshAll / TakeDailySnapshot macros):"
+    ws["A21"] = "FILTER GUIDE:"
     ws["A21"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
     ws["A21"].fill = fill(DARK_HEX)
+    ws["A22"] = "Use Excel AutoFilter on T_DISPATCH_KPI for ShiftName / BusinessDate / RAG filters."
+    ws["A22"].fill = fill(DARK_HEX)
+    ws["A23"] = "For pivot-based slicers: Insert PivotTable from tblDispatchKPI, then Insert > Slicer."
+    ws["A23"].fill = fill(DARK_HEX)
+
+    # Instruction note about buttons
+    ws["A25"] = "BUTTONS (add manually or run the VBA RefreshAll / TakeDailySnapshot macros):"
+    ws["A25"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+    ws["A25"].fill = fill(DARK_HEX)
 
     button_notes = [
         "REFRESH ALL             -> Recalculates all formulas & refreshes PivotTables",
         "TAKE DAILY SNAPSHOT     -> Appends current KPIs to the HISTORY sheet",
         "POPULATE ACTION SHEETS  -> Copies filtered data to ACTION_HRP and ACTION_PACKED",
     ]
-    for r_off, note in enumerate(button_notes, start=22):
+    for r_off, note in enumerate(button_notes, start=26):
         cell = ws.cell(row=r_off, column=1, value=note)
         cell.font = Font(italic=True, color="C8C8C8")
         cell.fill = fill(DARK_HEX)
+
+    # ── RAG Summary table (chart data) ───────────────────────────────────────
+    # Placed here so users can select this range to build a pie chart
+    ws["A29"] = "RAG SUMMARY (select A29:B32 → Insert > Chart > Pie)"
+    ws["A29"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+    ws["A29"].fill = fill(HEADER_HEX)
+
+    rag_hdr_data = [
+        ("RAG", "Count"),
+        ("Green", '=COUNTIF(tblDispatchKPI[RAG],"Green")'),
+        ("Amber", '=COUNTIF(tblDispatchKPI[RAG],"Amber")'),
+        ("Red",   '=COUNTIF(tblDispatchKPI[RAG],"Red")'),
+    ]
+    rag_colors = [HEADER_HEX, GREEN_HEX, AMBER_HEX, RED_HEX]
+    for r_off, ((label, formula), hex_c) in enumerate(
+            zip(rag_hdr_data, rag_colors), start=30):
+        cell_a = ws.cell(row=r_off, column=1, value=label)
+        cell_b = ws.cell(row=r_off, column=2, value=formula)
+        cell_a.fill = fill(hex_c)
+        cell_b.fill = fill(hex_c)
+        if hex_c != HEADER_HEX:
+            cell_a.font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+            cell_b.font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+        else:
+            cell_a.font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+            cell_b.font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+
+    # ── Performance trend data (chart data) ──────────────────────────────────
+    ws["D29"] = "PERFORMANCE TREND (select D29:E29+ → Insert > Chart > Line)"
+    ws["D29"].font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+    ws["D29"].fill = fill(HEADER_HEX)
+
+    ws.cell(row=30, column=4, value="BusinessDate").fill = fill(HEADER_HEX)
+    ws.cell(row=30, column=4).font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+    ws.cell(row=30, column=5, value="DailyPerformancePct").fill = fill(HEADER_HEX)
+    ws.cell(row=30, column=5).font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+    ws.cell(row=30, column=6, value="TotalShipped").fill = fill(HEADER_HEX)
+    ws.cell(row=30, column=6).font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+    ws.cell(row=30, column=7, value="TotalExpected").fill = fill(HEADER_HEX)
+    ws.cell(row=30, column=7).font = Font(bold=True, color=_hex_font_color(WHITE_HEX))
+
+    # One data row pulling the first row from T_DISPATCH_DAILY
+    for col_idx, formula in enumerate([
+        "=IF(ROWS(tblDispatchDaily[BusinessDate])>0,INDEX(tblDispatchDaily[BusinessDate],1),\"\")",
+        "=IF(ROWS(tblDispatchDaily[DailyPerformancePct])>0,INDEX(tblDispatchDaily[DailyPerformancePct],1),0)",
+        "=IF(ROWS(tblDispatchDaily[TotalShipped])>0,INDEX(tblDispatchDaily[TotalShipped],1),0)",
+        "=IF(ROWS(tblDispatchDaily[TotalExpected])>0,INDEX(tblDispatchDaily[TotalExpected],1),0)",
+    ], start=4):
+        ws.cell(row=31, column=col_idx, value=formula).fill = fill("FF323232")
+
+    ws.cell(row=31, column=4).number_format = "dd/mm/yyyy"
+    ws.cell(row=31, column=5).number_format = "0.0%"
 
     for col_idx in range(1, 15):
         ws.column_dimensions[col_letter(col_idx)].width = 16
@@ -692,11 +885,13 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsx") -> None:
     build_in_shipped(wb)
     build_in_staffing(wb)
     build_in_targets(wb)
+    build_in_audits(wb)
     build_t_dispatch_kpi(wb)
     build_t_dispatch_daily(wb)
     build_action_hrp(wb)
     build_action_packed(wb)
     build_history(wb)
+    build_weekly_summary(wb)
     build_data_quality(wb)
     build_dashboard(wb)
 
@@ -705,9 +900,10 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsx") -> None:
     desired_order = [
         "DASHBOARD", "CONFIG",
         "IN_PACKED", "IN_HRP", "IN_SHIPPED_LPNS", "IN_STAFFING", "IN_TARGETS_DAILY",
+        "IN_AUDITS",
         "T_DISPATCH_KPI", "T_DISPATCH_DAILY",
         "ACTION_HRP", "ACTION_PACKED",
-        "HISTORY", "DATA_QUALITY"
+        "HISTORY", "WEEKLY_SUMMARY", "DATA_QUALITY"
     ]
     missing = [n for n in desired_order if n not in wb.sheetnames]
     if missing:
@@ -717,7 +913,7 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsx") -> None:
             continue
         current_pos = wb.sheetnames.index(name)
         if current_pos != idx:
-            wb.move_sheet(name, offset=current_pos - idx)
+            wb.move_sheet(name, offset=idx - current_pos)
 
     wb.save(output_path)
     print(f"Workbook saved: {output_path}")

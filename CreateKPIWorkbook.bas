@@ -30,6 +30,7 @@ Public Sub CreateKPIWorkbook()
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
     Application.DisplayAlerts = False
+    On Error GoTo ErrHandler
 
     Dim wb As Workbook
     Set wb = ThisWorkbook          ' run inside the target workbook
@@ -51,11 +52,13 @@ Public Sub CreateKPIWorkbook()
     Call BuildIN_SHIPPED_LPNS(wb)
     Call BuildIN_STAFFING(wb)
     Call BuildIN_TARGETS_DAILY(wb)
+    Call BuildIN_AUDITS(wb)
     Call BuildT_DISPATCH_KPI(wb)
     Call BuildT_DISPATCH_DAILY(wb)
     Call BuildACTION_HRP(wb)
     Call BuildACTION_PACKED(wb)
     Call BuildHISTORY(wb)
+    Call BuildWEEKLY_SUMMARY(wb)
     Call BuildDATA_QUALITY(wb)
     Call BuildDASHBOARD(wb)
 
@@ -74,11 +77,36 @@ Public Sub CreateKPIWorkbook()
 
     MsgBox "KPI Workbook created successfully!" & vbCrLf & _
            "Unprotect password: " & UNPROTECT_PW, vbInformation, "Done"
+    Exit Sub
+
+ErrHandler:
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    MsgBox "Error " & Err.Number & " in " & Err.Source & ":" & vbCrLf & _
+           Err.Description & vbCrLf & vbCrLf & _
+           "Macro aborted. Check the VBA editor (Alt+F11) for details.", _
+           vbCritical, "CreateKPIWorkbook Failed"
 End Sub
 
 '================================================================================
 ' SHEET BUILDERS
 '================================================================================
+
+' ---- Helper: safely freeze panes at A2 without leaving the current sheet active
+Private Sub FreezePanesAtA2(ws As Worksheet)
+    Dim savedWs As Worksheet
+    On Error Resume Next
+    Set savedWs = ActiveSheet
+    On Error GoTo 0
+    ws.Activate
+    ActiveWindow.FreezePanes = False
+    ws.Range("A2").Select
+    ActiveWindow.FreezePanes = True
+    On Error Resume Next
+    If Not savedWs Is Nothing Then savedWs.Activate
+    On Error GoTo 0
+End Sub
 
 ' ---- CONFIG -----------------------------------------------------------------
 Private Sub BuildCONFIG(wb As Workbook)
@@ -238,9 +266,7 @@ Private Sub BuildIN_PACKED(wb As Workbook)
     End With
 
     ' Freeze panes at row 2
-    ws.Activate
-    ws.Range("A2").Select
-    ActiveWindow.FreezePanes = True
+    Call FreezePanesAtA2(ws)
 
     ws.Columns("A:R").AutoFit
     ws.Tab.Color = RGB(0, 112, 192)
@@ -328,9 +354,7 @@ Private Sub BuildIN_HRP(wb As Workbook)
     End With
 
     ws.Columns("C:C").NumberFormat = "dd/mm/yyyy hh:mm"
-    ws.Activate
-    ws.Range("A2").Select
-    ActiveWindow.FreezePanes = True
+    Call FreezePanesAtA2(ws)
     ws.Columns("A:Q").AutoFit
     ws.Tab.Color = RGB(0, 176, 240)
 End Sub
@@ -385,9 +409,7 @@ Private Sub BuildIN_SHIPPED_LPNS(wb As Workbook)
     End With
 
     ws.Columns("A:A").NumberFormat = "dd/mm/yyyy"
-    ws.Activate
-    ws.Range("A2").Select
-    ActiveWindow.FreezePanes = True
+    Call FreezePanesAtA2(ws)
     ws.Columns("A:F").AutoFit
     ws.Tab.Color = RGB(0, 176, 80)
 End Sub
@@ -436,9 +458,7 @@ Private Sub BuildIN_STAFFING(wb As Workbook)
     End With
 
     ws.Columns("A:A").NumberFormat = "dd/mm/yyyy"
-    ws.Activate
-    ws.Range("A2").Select
-    ActiveWindow.FreezePanes = True
+    Call FreezePanesAtA2(ws)
     ws.Columns("A:D").AutoFit
     ws.Tab.Color = RGB(0, 176, 80)
 End Sub
@@ -477,9 +497,7 @@ Private Sub BuildIN_TARGETS_DAILY(wb As Workbook)
     End With
 
     ws.Columns("A:A").NumberFormat = "dd/mm/yyyy"
-    ws.Activate
-    ws.Range("A2").Select
-    ActiveWindow.FreezePanes = True
+    Call FreezePanesAtA2(ws)
     ws.Columns("A:C").AutoFit
     ws.Tab.Color = RGB(0, 176, 80)
 End Sub
@@ -555,9 +573,7 @@ Private Sub BuildT_DISPATCH_KPI(wb As Workbook)
         .BarColor.Color = RGB(0, 112, 192)
     End With
 
-    ws.Activate
-    ws.Range("A2").Select
-    ActiveWindow.FreezePanes = True
+    Call FreezePanesAtA2(ws)
     ws.Columns("A:H").AutoFit
     ws.Tab.Color = RGB(255, 192, 0)
 End Sub
@@ -598,9 +614,7 @@ Private Sub BuildT_DISPATCH_DAILY(wb As Workbook)
     ws.Columns("A:A").NumberFormat = "dd/mm/yyyy"
     ws.Columns("E:E").NumberFormat = "0.0%"
 
-    ws.Activate
-    ws.Range("A2").Select
-    ActiveWindow.FreezePanes = True
+    Call FreezePanesAtA2(ws)
     ws.Columns("A:E").AutoFit
     ws.Tab.Color = RGB(255, 192, 0)
 End Sub
@@ -643,9 +657,7 @@ Private Sub BuildACTION_HRP(wb As Workbook)
         .InputMessage = "Y = Yes, N = No"
     End With
 
-    ws.Activate
-    ws.Range("A2").Select
-    ActiveWindow.FreezePanes = True
+    Call FreezePanesAtA2(ws)
     ws.Columns("A:L").AutoFit
     ws.Tab.Color = RGB(192, 0, 0)
 End Sub
@@ -683,9 +695,7 @@ Private Sub BuildACTION_PACKED(wb As Workbook)
         .Interior.Color = COL_AMBER
     End With
 
-    ws.Activate
-    ws.Range("A2").Select
-    ActiveWindow.FreezePanes = True
+    Call FreezePanesAtA2(ws)
     ws.Columns("A:I").AutoFit
     ws.Tab.Color = RGB(192, 0, 0)
 End Sub
