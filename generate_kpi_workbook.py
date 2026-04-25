@@ -739,11 +739,11 @@ def build_charts(wb: Workbook) -> None:
 
     data5 = Reference(ws_kpi, min_col=11, min_row=1, max_row=500)   # AuditPct
     chart5.add_data(data5, titles_from_data=True)
-    cats5 = Reference(ws_kpi, min_col=1, min_row=2, max_row=500)
+    cats5 = Reference(ws_kpi, min_col=2, min_row=2, max_row=500)
     chart5.set_categories(cats5)
 
     s5 = chart5.series[0]
-    s5.graphicalProperties.line.solidFill = "FF70AD47"
+    s5.graphicalProperties.line.solidFill = "70AD47"
     s5.graphicalProperties.line.width = 20000
     s5.marker.symbol = "diamond"
     s5.marker.size   = 5
