@@ -646,9 +646,9 @@ def build_charts(wb: Workbook) -> None:
     chart1.y_axis.numFmt = "0%"
     chart1.y_axis.scaling.min = 0
 
-    data1 = Reference(ws_daily, min_col=5, min_row=1, max_row=1048576)   # DailyPerformancePct
+    data1 = Reference(ws_daily, min_col=5, min_row=1, max_row=1000000)   # DailyPerformancePct
     chart1.add_data(data1, titles_from_data=True)
-    cats1 = Reference(ws_daily, min_col=1, min_row=2, max_row=1048576)   # BusinessDate
+    cats1 = Reference(ws_daily, min_col=1, min_row=2, max_row=1000000)   # BusinessDate
     chart1.set_categories(cats1)
 
     s1 = chart1.series[0]
@@ -670,14 +670,14 @@ def build_charts(wb: Workbook) -> None:
     chart2.y_axis.title = "Cartons"
     chart2.x_axis.title = "Shift"
 
-    data2a = Reference(ws_kpi, min_col=3, min_row=1, max_row=500)    # ShippedCartons
-    data2b = Reference(ws_kpi, min_col=6, min_row=1, max_row=500)    # ExpectedCartons
+    data2a = Reference(ws_kpi, min_col=3, min_row=1, max_row=1000000)    # ShippedCartons
+    data2b = Reference(ws_kpi, min_col=6, min_row=1, max_row=1000000)    # ExpectedCartons
     chart2.add_data(data2a, titles_from_data=True)
     chart2.add_data(data2b, titles_from_data=True)
     chart2.series[0].graphicalProperties.solidFill = BLUE_HEX[2:]
     chart2.series[1].graphicalProperties.solidFill = GREEN_HEX[2:]
 
-    cats2 = Reference(ws_kpi, min_col=2, min_row=2, max_row=500)    # ShiftName
+    cats2 = Reference(ws_kpi, min_col=2, min_row=2, max_row=1000000)    # ShiftName
     chart2.set_categories(cats2)
 
     ws.add_chart(chart2, "M3")
@@ -693,14 +693,14 @@ def build_charts(wb: Workbook) -> None:
     chart3.y_axis.title = "Count"
     chart3.x_axis.title = "Snapshot Date"
 
-    data3a = Reference(ws_hist, min_col=9,  min_row=1, max_row=500)  # HRP_OpenCount
-    data3b = Reference(ws_hist, min_col=10, min_row=1, max_row=500)  # Packed_OverdueCount
+    data3a = Reference(ws_hist, min_col=9,  min_row=1, max_row=1000000)  # HRP_OpenCount
+    data3b = Reference(ws_hist, min_col=10, min_row=1, max_row=1000000)  # Packed_OverdueCount
     chart3.add_data(data3a, titles_from_data=True)
     chart3.add_data(data3b, titles_from_data=True)
     chart3.series[0].graphicalProperties.solidFill = RED_HEX[2:]
     chart3.series[1].graphicalProperties.solidFill = AMBER_HEX[2:]
 
-    cats3 = Reference(ws_hist, min_col=2, min_row=2, max_row=500)   # BusinessDate
+    cats3 = Reference(ws_hist, min_col=2, min_row=2, max_row=1000000)   # BusinessDate
     chart3.set_categories(cats3)
 
     ws.add_chart(chart3, "A33")
@@ -714,9 +714,9 @@ def build_charts(wb: Workbook) -> None:
     chart4.y_axis.title = "Staff Count"
     chart4.x_axis.title = "Business Date"
 
-    data4 = Reference(ws_daily, min_col=3, min_row=1, max_row=500)  # TotalStaff
+    data4 = Reference(ws_daily, min_col=3, min_row=1, max_row=1000000)  # TotalStaff
     chart4.add_data(data4, titles_from_data=True)
-    cats4 = Reference(ws_daily, min_col=1, min_row=2, max_row=500)
+    cats4 = Reference(ws_daily, min_col=1, min_row=2, max_row=1000000)
     chart4.set_categories(cats4)
 
     s4 = chart4.series[0]
@@ -738,9 +738,9 @@ def build_charts(wb: Workbook) -> None:
     chart5.y_axis.numFmt = "0%"
     chart5.y_axis.scaling.min = 0
 
-    data5 = Reference(ws_kpi, min_col=11, min_row=1, max_row=500)   # AuditPct
+    data5 = Reference(ws_kpi, min_col=11, min_row=1, max_row=1000000)   # AuditPct
     chart5.add_data(data5, titles_from_data=True)
-    cats5 = Reference(ws_kpi, min_col=2, min_row=2, max_row=500)
+    cats5 = Reference(ws_kpi, min_col=2, min_row=2, max_row=1000000)   # ShiftName
     chart5.set_categories(cats5)
 
     s5 = chart5.series[0]

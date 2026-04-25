@@ -74,21 +74,68 @@ Public Sub CreateKPIWorkbook()
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
 
-    ' Save as macro-enabled workbook so VBA buttons survive the next open.
-    ' If the file already has an xlsm extension this is a no-op save;
-    ' otherwise it converts the file in place.
-    On Error Resume Next
+    ' ── Save as macro-enabled workbook (.xlsm) ────────────────────────────────
+    ' This ensures VBA code and Form Button assignments survive the next open.
     Dim xlsmPath As String
-    xlsmPath = Left(wb.FullName, InStrRev(wb.FullName, ".")) & "xlsm"
-    Application.DisplayAlerts = False
-    wb.SaveAs Filename:=xlsmPath, FileFormat:=xlOpenXMLWorkbookMacroEnabled
+    Dim dotPos   As Long
+
+    If LCase(Right(wb.Name, 5)) = ".xlsm" Then
+        ' Already a macro-enabled file — just save in place.
+        wb.Save
+        MsgBox "KPI Workbook created successfully!" & vbCrLf & _
+               "Unprotect password: " & UNPROTECT_PW & vbCrLf & vbCrLf & _
+               "File saved as .xlsm — macros are embedded and buttons will work on next open.", _
+               vbInformation, "Done"
+    ElseIf wb.Path = "" Then
+        ' Workbook has never been saved (e.g. "Book1" with no path).
+        ' Prompt the user to choose a location.
+        Dim savePath As String
+        savePath = Application.GetSaveAsFilename( _
+            InitialFileName:="KPI_Workbook.xlsm", _
+            FileFilter:="Excel Macro-Enabled Workbook (*.xlsm), *.xlsm", _
+            Title:="Save the KPI Workbook as .xlsm")
+        If savePath = False Or savePath = "" Then
+            MsgBox "Save cancelled. The workbook was NOT saved as .xlsm." & vbCrLf & _
+                   "Macro buttons will not persist until you save the file as .xlsm.", _
+                   vbExclamation, "Save Cancelled"
+        Else
+            Application.DisplayAlerts = False
+            On Error GoTo SaveErr
+            wb.SaveAs Filename:=savePath, FileFormat:=xlOpenXMLWorkbookMacroEnabled
+            Application.DisplayAlerts = True
+            On Error GoTo 0
+            MsgBox "KPI Workbook created successfully!" & vbCrLf & _
+                   "Unprotect password: " & UNPROTECT_PW & vbCrLf & vbCrLf & _
+                   "File saved as .xlsm — macros are embedded and buttons will work on next open.", _
+                   vbInformation, "Done"
+        End If
+    Else
+        ' Workbook has been saved but is not already .xlsm — convert in place.
+        dotPos = InStrRev(wb.FullName, ".")
+        If dotPos > 0 Then
+            xlsmPath = Left(wb.FullName, dotPos - 1) & ".xlsm"
+        Else
+            xlsmPath = wb.FullName & ".xlsm"
+        End If
+        Application.DisplayAlerts = False
+        On Error GoTo SaveErr
+        wb.SaveAs Filename:=xlsmPath, FileFormat:=xlOpenXMLWorkbookMacroEnabled
+        Application.DisplayAlerts = True
+        On Error GoTo 0
+        MsgBox "KPI Workbook created successfully!" & vbCrLf & _
+               "Unprotect password: " & UNPROTECT_PW & vbCrLf & vbCrLf & _
+               "File saved as .xlsm — macros are embedded and buttons will work on next open.", _
+               vbInformation, "Done"
+    End If
+    Exit Sub
+
+SaveErr:
     Application.DisplayAlerts = True
     On Error GoTo 0
-
-    MsgBox "KPI Workbook created successfully!" & vbCrLf & _
-           "Unprotect password: " & UNPROTECT_PW & vbCrLf & vbCrLf & _
-           "File saved as .xlsm — macros are now embedded and buttons will work on next open.", _
-           vbInformation, "Done"
+    MsgBox "KPI Workbook was built, but could not be saved as .xlsm." & vbCrLf & _
+           "Error: " & Err.Description & vbCrLf & vbCrLf & _
+           "Please use File > Save As and choose 'Excel Macro-Enabled Workbook (*.xlsm)' manually.", _
+           vbCritical, "Save Error"
 End Sub
 
 '================================================================================
