@@ -26,7 +26,7 @@ from openpyxl.styles import (
     Font, PatternFill, Alignment, Border, Side
 )
 from openpyxl.styles.differential import DifferentialStyle
-from openpyxl.formatting.rule import FormulaRule, Rule
+from openpyxl.formatting.rule import Rule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
