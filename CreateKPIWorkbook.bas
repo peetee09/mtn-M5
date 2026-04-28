@@ -1571,12 +1571,14 @@ Public Sub PopulateActionSheets()
     Dim cellVal As Variant
     For r = 1 To tblHRP.ListRows.Count
         cellVal = tblHRP.ListColumns("IncludeInHRP").DataBodyRange(r).Value
-        If Not IsError(cellVal) And cellVal = True Then
-            For c = 0 To UBound(hrpCols)
-                wsActHRP.Cells(destRow, c + 1).Value = _
-                    tblHRP.ListColumns(hrpCols(c)).DataBodyRange(r).Value
-            Next c
-            destRow = destRow + 1
+        If Not IsError(cellVal) Then
+            If cellVal = True Then
+                For c = 0 To UBound(hrpCols)
+                    wsActHRP.Cells(destRow, c + 1).Value = _
+                        tblHRP.ListColumns(hrpCols(c)).DataBodyRange(r).Value
+                Next c
+                destRow = destRow + 1
+            End If
         End If
     Next r
 
@@ -1600,8 +1602,10 @@ Public Sub PopulateActionSheets()
     rowCount = 0
     For r = 1 To tblPacked.ListRows.Count
         cellVal = tblPacked.ListColumns("ActionFlag").DataBodyRange(r).Value
-        If Not IsError(cellVal) And cellVal = True Then
-            rowCount = rowCount + 1
+        If Not IsError(cellVal) Then
+            If cellVal = True Then
+                rowCount = rowCount + 1
+            End If
         End If
     Next r
 
@@ -1611,11 +1615,13 @@ Public Sub PopulateActionSheets()
         idx = 1
         For r = 1 To tblPacked.ListRows.Count
             cellVal = tblPacked.ListColumns("ActionFlag").DataBodyRange(r).Value
-            If Not IsError(cellVal) And cellVal = True Then
-                For c = 0 To UBound(pckCols)
-                    rowData(idx, c + 1) = tblPacked.ListColumns(pckCols(c)).DataBodyRange(r).Value
-                Next c
-                idx = idx + 1
+            If Not IsError(cellVal) Then
+                If cellVal = True Then
+                    For c = 0 To UBound(pckCols)
+                        rowData(idx, c + 1) = tblPacked.ListColumns(pckCols(c)).DataBodyRange(r).Value
+                    Next c
+                    idx = idx + 1
+                End If
             End If
         Next r
 
@@ -1627,12 +1633,16 @@ Public Sub PopulateActionSheets()
             For j = 1 To rowCount - i
                 aVal = rowData(j, 4)
                 bVal = rowData(j + 1, 4)
-                If Not IsError(aVal) And Not IsError(bVal) And aVal < bVal Then
-                    For c = 1 To UBound(pckCols) + 1
-                        tmpVal = rowData(j, c)
-                        rowData(j, c) = rowData(j + 1, c)
-                        rowData(j + 1, c) = tmpVal
-                    Next c
+                If Not IsError(aVal) Then
+                    If Not IsError(bVal) Then
+                        If aVal < bVal Then
+                            For c = 1 To UBound(pckCols) + 1
+                                tmpVal = rowData(j, c)
+                                rowData(j, c) = rowData(j + 1, c)
+                                rowData(j + 1, c) = tmpVal
+                            Next c
+                        End If
+                    End If
                 End If
             Next j
         Next i
