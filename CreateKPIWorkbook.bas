@@ -1567,14 +1567,18 @@ Public Sub PopulateActionSheets()
     Dim destRow As Long
     destRow = 2
     Dim r As Long
+    Dim c As Integer
+    Dim cellVal As Variant
     For r = 1 To tblHRP.ListRows.Count
-        If tblHRP.ListColumns("IncludeInHRP").DataBodyRange(r).Value = True Then
-            Dim c As Integer
-            For c = 0 To UBound(hrpCols)
-                wsActHRP.Cells(destRow, c + 1).Value = _
-                    tblHRP.ListColumns(hrpCols(c)).DataBodyRange(r).Value
-            Next c
-            destRow = destRow + 1
+        cellVal = tblHRP.ListColumns("IncludeInHRP").DataBodyRange(r).Value
+        If Not IsError(cellVal) Then
+            If cellVal = True Then
+                For c = 0 To UBound(hrpCols)
+                    wsActHRP.Cells(destRow, c + 1).Value = _
+                        tblHRP.ListColumns(hrpCols(c)).DataBodyRange(r).Value
+                Next c
+                destRow = destRow + 1
+            End If
         End If
     Next r
 
@@ -1597,8 +1601,11 @@ Public Sub PopulateActionSheets()
     Dim rowCount As Long
     rowCount = 0
     For r = 1 To tblPacked.ListRows.Count
-        If tblPacked.ListColumns("ActionFlag").DataBodyRange(r).Value = True Then
-            rowCount = rowCount + 1
+        cellVal = tblPacked.ListColumns("ActionFlag").DataBodyRange(r).Value
+        If Not IsError(cellVal) Then
+            If cellVal = True Then
+                rowCount = rowCount + 1
+            End If
         End If
     Next r
 
@@ -1607,25 +1614,35 @@ Public Sub PopulateActionSheets()
         Dim idx As Long
         idx = 1
         For r = 1 To tblPacked.ListRows.Count
-            If tblPacked.ListColumns("ActionFlag").DataBodyRange(r).Value = True Then
-                For c = 0 To UBound(pckCols)
-                    rowData(idx, c + 1) = tblPacked.ListColumns(pckCols(c)).DataBodyRange(r).Value
-                Next c
-                idx = idx + 1
+            cellVal = tblPacked.ListColumns("ActionFlag").DataBodyRange(r).Value
+            If Not IsError(cellVal) Then
+                If cellVal = True Then
+                    For c = 0 To UBound(pckCols)
+                        rowData(idx, c + 1) = tblPacked.ListColumns(pckCols(c)).DataBodyRange(r).Value
+                    Next c
+                    idx = idx + 1
+                End If
             End If
         Next r
 
         ' Bubble sort descending by AgeDays (column 4 = index 4)
         Dim i As Long, j As Long
         Dim tmpVal As Variant
+        Dim aVal As Variant, bVal As Variant
         For i = 1 To rowCount - 1
             For j = 1 To rowCount - i
-                If rowData(j, 4) < rowData(j + 1, 4) Then
-                    For c = 1 To UBound(pckCols) + 1
-                        tmpVal = rowData(j, c)
-                        rowData(j, c) = rowData(j + 1, c)
-                        rowData(j + 1, c) = tmpVal
-                    Next c
+                aVal = rowData(j, 4)
+                bVal = rowData(j + 1, 4)
+                If Not IsError(aVal) Then
+                    If Not IsError(bVal) Then
+                        If aVal < bVal Then
+                            For c = 1 To UBound(pckCols) + 1
+                                tmpVal = rowData(j, c)
+                                rowData(j, c) = rowData(j + 1, c)
+                                rowData(j + 1, c) = tmpVal
+                            Next c
+                        End If
+                    End If
                 End If
             Next j
         Next i
