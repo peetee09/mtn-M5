@@ -89,7 +89,7 @@ Public Sub CreateKPIWorkbook()
     ElseIf wb.Path = "" Then
         ' Workbook has never been saved (e.g. "Book1" with no path).
         ' Prompt the user to choose a location.
-        Dim savePath As String
+        Dim savePath As Variant
         savePath = Application.GetSaveAsFilename( _
             InitialFileName:="KPI_Workbook.xlsm", _
             FileFilter:="Excel Macro-Enabled Workbook (*.xlsm), *.xlsm", _
