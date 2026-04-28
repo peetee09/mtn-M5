@@ -1567,9 +1567,11 @@ Public Sub PopulateActionSheets()
     Dim destRow As Long
     destRow = 2
     Dim r As Long
+    Dim c As Integer
+    Dim cellVal As Variant
     For r = 1 To tblHRP.ListRows.Count
-        If tblHRP.ListColumns("IncludeInHRP").DataBodyRange(r).Value = True Then
-            Dim c As Integer
+        cellVal = tblHRP.ListColumns("IncludeInHRP").DataBodyRange(r).Value
+        If Not IsError(cellVal) And cellVal = True Then
             For c = 0 To UBound(hrpCols)
                 wsActHRP.Cells(destRow, c + 1).Value = _
                     tblHRP.ListColumns(hrpCols(c)).DataBodyRange(r).Value
@@ -1597,7 +1599,8 @@ Public Sub PopulateActionSheets()
     Dim rowCount As Long
     rowCount = 0
     For r = 1 To tblPacked.ListRows.Count
-        If tblPacked.ListColumns("ActionFlag").DataBodyRange(r).Value = True Then
+        cellVal = tblPacked.ListColumns("ActionFlag").DataBodyRange(r).Value
+        If Not IsError(cellVal) And cellVal = True Then
             rowCount = rowCount + 1
         End If
     Next r
@@ -1607,7 +1610,8 @@ Public Sub PopulateActionSheets()
         Dim idx As Long
         idx = 1
         For r = 1 To tblPacked.ListRows.Count
-            If tblPacked.ListColumns("ActionFlag").DataBodyRange(r).Value = True Then
+            cellVal = tblPacked.ListColumns("ActionFlag").DataBodyRange(r).Value
+            If Not IsError(cellVal) And cellVal = True Then
                 For c = 0 To UBound(pckCols)
                     rowData(idx, c + 1) = tblPacked.ListColumns(pckCols(c)).DataBodyRange(r).Value
                 Next c
@@ -1618,9 +1622,12 @@ Public Sub PopulateActionSheets()
         ' Bubble sort descending by AgeDays (column 4 = index 4)
         Dim i As Long, j As Long
         Dim tmpVal As Variant
+        Dim aVal As Variant, bVal As Variant
         For i = 1 To rowCount - 1
             For j = 1 To rowCount - i
-                If rowData(j, 4) < rowData(j + 1, 4) Then
+                aVal = rowData(j, 4)
+                bVal = rowData(j + 1, 4)
+                If Not IsError(aVal) And Not IsError(bVal) And aVal < bVal Then
                     For c = 1 To UBound(pckCols) + 1
                         tmpVal = rowData(j, c)
                         rowData(j, c) = rowData(j + 1, c)
