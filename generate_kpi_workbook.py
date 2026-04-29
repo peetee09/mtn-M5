@@ -1293,13 +1293,13 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
     # Rows 48-51: Monthly KPI cards
     MONTH_ACC = "FF703090"   # purple
     _kpi_card(ws, row=48, col=2, title="CARTONS THIS MONTH",
-              formula='=SUMIFS(tblHistory[ShippedCartons],tblHistory[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],"<="&TODAY())',
+              formula='=SUMIFS(tblDispatchDaily[ShippedCartons],tblDispatchDaily[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
               accent=MONTH_ACC)
     _kpi_card(ws, row=48, col=6, title="AVG PERF % (MONTH)",
-              formula='=IFERROR(TEXT(AVERAGEIFS(tblHistory[PerformancePct],tblHistory[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],"<="&TODAY()),"0.0%"),"N/A")',
+              formula='=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[PerformancePct],tblDispatchDaily[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],"<="&TODAY()),"0.0%"),"N/A")',
               accent=MONTH_ACC)
     _kpi_card(ws, row=48, col=10, title="STAFF COUNT THIS MONTH",
-              formula='=SUMIFS(tblHistory[TotalStaff],tblHistory[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],"<="&TODAY())',
+              formula='=SUMIFS(tblDispatchDaily[TotalStaff],tblDispatchDaily[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
               accent=MONTH_ACC)
 
     # Row 52: spacer
