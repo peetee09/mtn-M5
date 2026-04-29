@@ -58,6 +58,7 @@ Public Sub CreateKPIWorkbook()
     Call BuildACTION_PACKED(wb)
     Call BuildHISTORY(wb)
     Call BuildDATA_QUALITY(wb)
+    Call BuildDAILY_ENTRY(wb)
     Call BuildCHARTS(wb)
     Call BuildDASHBOARD(wb)
 
@@ -1140,14 +1141,15 @@ Private Sub BuildDASHBOARD(wb As Workbook)
 
     ' Row 32: secondary navigation — analysis/charts sheets
     ws.Rows(32).RowHeight = 16
-    Dim navItems2(3, 1) As String
+    Dim navItems2(4, 1) As String
     navItems2(0, 0) = "CHARTS":          navItems2(0, 1) = "#CHARTS!A1"
     navItems2(1, 0) = "DATA_QUALITY":    navItems2(1, 1) = "#DATA_QUALITY!A1"
     navItems2(2, 0) = "ACTION_HRP":      navItems2(2, 1) = "#ACTION_HRP!A1"
     navItems2(3, 0) = "ACTION_PACKED":   navItems2(3, 1) = "#ACTION_PACKED!A1"
+    navItems2(4, 0) = "DAILY_ENTRY":     navItems2(4, 1) = "#DAILY_ENTRY!A1"
 
     Dim ni2 As Integer
-    For ni2 = 0 To 3
+    For ni2 = 0 To 4
         Dim nc2 As Range
         Set nc2 = ws.Range(ws.Cells(32, (ni2 * 2) + 2), ws.Cells(32, (ni2 * 2) + 3))
         nc2.Merge
@@ -1210,6 +1212,63 @@ Private Sub BuildDASHBOARD(wb As Workbook)
             .HorizontalAlignment = xlCenter: .WrapText = True
         End With
     Next bi
+
+    ' Row 38: FILL DATA button placeholder (actual button added by AddButtons)
+    ws.Rows(38).RowHeight = 24
+    With ws.Range("B38:D38")
+        .Merge: .Value = "[ FILL DATA ]"
+        .Font.Bold = True: .Font.Size = 9: .Font.Color = COL_HEADER
+        .Interior.Color = RGB(200, 230, 201)
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+        .Borders.LineStyle = xlContinuous
+    End With
+    ws.Rows(39).RowHeight = 20
+    With ws.Range("B39:N39")
+        .Merge
+        .Value = "Open the daily entry form to record shift data for a specific day — the dashboard calculates all KPIs for the day, week, and month."
+        .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
+        .HorizontalAlignment = xlCenter: .WrapText = True
+    End With
+
+    ' Row 40: spacer
+    ws.Rows(40).RowHeight = 8
+
+    ' ── Row 41: WEEKLY SUMMARY section ────────────────────────────────────────
+    ws.Rows(41).RowHeight = 20
+    Call MakeSectionHeader(ws, "A41:N41", "  WEEKLY SUMMARY  (Monday – today)", RGB(70, 130, 180))
+
+    ' Rows 42-45: Weekly KPI cards
+    ' WEEKDAY(TODAY(),2) returns 1=Mon … 7=Sun, so TODAY()-WEEKDAY(TODAY(),2)+1 = this Monday
+    Call MakeKPICard(ws, 42, 2, "CARTONS THIS WEEK", _
+        "=SUMIFS(tblHistory[ShippedCartons],tblHistory[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],""<=""&TODAY())", _
+        RGB(70, 130, 180))
+    Call MakeKPICard(ws, 42, 6, "AVG PERF % (WEEK)", _
+        "=IFERROR(TEXT(AVERAGEIFS(tblHistory[PerformancePct],tblHistory[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],""<=""&TODAY()),""0.0%""),""N/A"")", _
+        RGB(70, 130, 180))
+    Call MakeKPICard(ws, 42, 10, "STAFF COUNT THIS WEEK", _
+        "=SUMIFS(tblHistory[TotalStaff],tblHistory[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],""<=""&TODAY())", _
+        RGB(70, 130, 180))
+
+    ' Row 46: spacer
+    ws.Rows(46).RowHeight = 8
+
+    ' ── Row 47: MONTHLY SUMMARY section ───────────────────────────────────────
+    ws.Rows(47).RowHeight = 20
+    Call MakeSectionHeader(ws, "A47:N47", "  MONTHLY SUMMARY  (1st of month – today)", RGB(112, 48, 160))
+
+    ' Rows 48-51: Monthly KPI cards
+    Call MakeKPICard(ws, 48, 2, "CARTONS THIS MONTH", _
+        "=SUMIFS(tblHistory[ShippedCartons],tblHistory[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],""<=""&TODAY())", _
+        RGB(112, 48, 160))
+    Call MakeKPICard(ws, 48, 6, "AVG PERF % (MONTH)", _
+        "=IFERROR(TEXT(AVERAGEIFS(tblHistory[PerformancePct],tblHistory[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],""<=""&TODAY()),""0.0%""),""N/A"")", _
+        RGB(112, 48, 160))
+    Call MakeKPICard(ws, 48, 10, "STAFF COUNT THIS MONTH", _
+        "=SUMIFS(tblHistory[TotalStaff],tblHistory[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],""<=""&TODAY())", _
+        RGB(112, 48, 160))
+
+    ' Row 52: spacer
+    ws.Rows(52).RowHeight = 8
 
     ws.Columns("A:A").ColumnWidth = 2
     ws.Columns("B:N").ColumnWidth = 15
@@ -1406,7 +1465,7 @@ End Sub
 
 Private Sub ReorderSheets(wb As Workbook)
     Dim order() As String
-    order = Split("DASHBOARD,CHARTS,CONFIG,IN_PACKED,IN_HRP,IN_SHIPPED_LPNS,IN_STAFFING,IN_TARGETS_DAILY,IN_AUDIT_LOG,T_DISPATCH_KPI,T_DISPATCH_DAILY,ACTION_HRP,ACTION_PACKED,HISTORY,DATA_QUALITY", ",")
+    order = Split("DASHBOARD,DAILY_ENTRY,CHARTS,CONFIG,IN_PACKED,IN_HRP,IN_SHIPPED_LPNS,IN_STAFFING,IN_TARGETS_DAILY,IN_AUDIT_LOG,T_DISPATCH_KPI,T_DISPATCH_DAILY,ACTION_HRP,ACTION_PACKED,HISTORY,DATA_QUALITY", ",")
     Dim i As Integer
     For i = 0 To UBound(order)
         ' On Error Resume Next suppresses errors for sheets that don't exist yet;
@@ -1451,6 +1510,42 @@ Private Sub AddButtons(wb As Workbook)
     btn3.Caption = "POPULATE ACTION SHEETS"
     btn3.OnAction = "PopulateActionSheets"
     btn3.Font.Bold = True
+
+    ' Fill Data button (row 39 on DASHBOARD)
+    Dim fillBtnTop As Double
+    fillBtnTop = ws.Rows(39).Top
+    Dim btn4 As Button
+    Set btn4 = ws.Buttons.Add(10, fillBtnTop, 200, BTN_H)
+    btn4.Caption = "FILL DATA"
+    btn4.OnAction = "NavigateToDailyEntry"
+    btn4.Font.Bold = True
+
+    ' === DAILY_ENTRY sheet buttons ===
+    Dim wsDE As Worksheet
+    On Error Resume Next
+    Set wsDE = wb.Worksheets("DAILY_ENTRY")
+    On Error GoTo 0
+    If Not wsDE Is Nothing Then
+        Dim deBtnTop As Double
+        deBtnTop = wsDE.Rows(15).Top
+        Const DE_BTN_H As Long = 30
+
+        Dim btnDE1 As Button
+        Set btnDE1 = wsDE.Buttons.Add( _
+            wsDE.Columns("B").Left, deBtnTop, _
+            wsDE.Columns("B").Width + wsDE.Columns("C").Width, DE_BTN_H)
+        btnDE1.Caption = "SUBMIT DAY"
+        btnDE1.OnAction = "SubmitDailyData"
+        btnDE1.Font.Bold = True
+
+        Dim btnDE2 As Button
+        Set btnDE2 = wsDE.Buttons.Add( _
+            wsDE.Columns("E").Left, deBtnTop, _
+            wsDE.Columns("E").Width + wsDE.Columns("F").Width, DE_BTN_H)
+        btnDE2.Caption = "CLEAR FORM"
+        btnDE2.OnAction = "ClearDailyForm"
+        btnDE2.Font.Bold = True
+    End If
 End Sub
 
 '================================================================================
@@ -1518,26 +1613,57 @@ Public Sub TakeDailySnapshot()
 
     Dim r As Long
     Dim newRow As ListRow
+    Dim cellVal As Variant
     For r = 1 To kpiTbl.ListRows.Count
         Set newRow = histTbl.ListRows.Add
-        newRow.Range(1).Value  = snapTime
-        newRow.Range(2).Value  = kpiTbl.ListColumns("BusinessDate").DataBodyRange(r).Value
-        newRow.Range(3).Value  = kpiTbl.ListColumns("ShiftName").DataBodyRange(r).Value
-        newRow.Range(4).Value  = kpiTbl.ListColumns("ShippedCartons").DataBodyRange(r).Value
-        newRow.Range(5).Value  = kpiTbl.ListColumns("TotalStaff").DataBodyRange(r).Value
-        newRow.Range(6).Value  = kpiTbl.ListColumns("ExpectedCartons").DataBodyRange(r).Value
-        newRow.Range(7).Value  = kpiTbl.ListColumns("PerformancePct").DataBodyRange(r).Value
-        newRow.Range(8).Value  = kpiTbl.ListColumns("RAG").DataBodyRange(r).Value
-        newRow.Range(9).Value  = Application.WorksheetFunction.CountIf( _
+
+        ' SnapshotTimestamp
+        newRow.Range(1).Value = snapTime
+
+        ' BusinessDate — guard against formula errors
+        cellVal = kpiTbl.ListColumns("BusinessDate").DataBodyRange(r).Value
+        newRow.Range(2).Value = IIf(IsError(cellVal), "", cellVal)
+
+        ' ShiftName
+        cellVal = kpiTbl.ListColumns("ShiftName").DataBodyRange(r).Value
+        newRow.Range(3).Value = IIf(IsError(cellVal), "", cellVal)
+
+        ' ShippedCartons
+        cellVal = kpiTbl.ListColumns("ShippedCartons").DataBodyRange(r).Value
+        newRow.Range(4).Value = IIf(IsError(cellVal), 0, cellVal)
+
+        ' TotalStaff
+        cellVal = kpiTbl.ListColumns("TotalStaff").DataBodyRange(r).Value
+        newRow.Range(5).Value = IIf(IsError(cellVal), 0, cellVal)
+
+        ' ExpectedCartons
+        cellVal = kpiTbl.ListColumns("ExpectedCartons").DataBodyRange(r).Value
+        newRow.Range(6).Value = IIf(IsError(cellVal), 0, cellVal)
+
+        ' PerformancePct — most common source of Type Mismatch (Runtime Error 13)
+        ' when the formula returns an error (e.g. #DIV/0! when no staff data)
+        cellVal = kpiTbl.ListColumns("PerformancePct").DataBodyRange(r).Value
+        newRow.Range(7).Value = IIf(IsError(cellVal), 0, cellVal)
+
+        ' RAG
+        cellVal = kpiTbl.ListColumns("RAG").DataBodyRange(r).Value
+        newRow.Range(8).Value = IIf(IsError(cellVal), "", cellVal)
+
+        ' HRP_OpenCount
+        newRow.Range(9).Value = Application.WorksheetFunction.CountIf( _
             ThisWorkbook.Worksheets("IN_HRP").ListObjects("tblHRP").ListColumns("IncludeInHRP").DataBodyRange, True)
+
+        ' Packed_OverdueCount
         newRow.Range(10).Value = Application.WorksheetFunction.CountIf( _
             ThisWorkbook.Worksheets("IN_PACKED").ListObjects("tblPacked").ListColumns("ActionFlag").DataBodyRange, True)
+
         ' AuditCount — looked up by column name so the position is always correct
         On Error Resume Next
         Dim auditColIdx As Integer
         auditColIdx = wsHist.ListObjects("tblHistory").ListColumns("AuditCount").Index
         If auditColIdx > 0 Then
-            newRow.Range(auditColIdx).Value = kpiTbl.ListColumns("AuditCount").DataBodyRange(r).Value
+            cellVal = kpiTbl.ListColumns("AuditCount").DataBodyRange(r).Value
+            newRow.Range(auditColIdx).Value = IIf(IsError(cellVal), 0, cellVal)
         End If
         On Error GoTo 0
     Next r
@@ -1660,3 +1786,531 @@ Public Sub PopulateActionSheets()
            "ACTION_HRP: " & (destRow - 2) & " row(s)" & vbCrLf & _
            "ACTION_PACKED: " & rowCount & " row(s)", vbInformation, "Populate Complete"
 End Sub
+
+'================================================================================
+' DAILY_ENTRY SHEET BUILDER
+'================================================================================
+
+Private Sub BuildDAILY_ENTRY(wb As Workbook)
+    Dim ws As Worksheet
+    Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    ws.Name = "DAILY_ENTRY"
+
+    ' Light-grey page background
+    ws.Cells.Interior.Color = RGB(242, 242, 242)
+
+    ' ── Row 1: Title bar ──────────────────────────────────────────────────────
+    ws.Rows(1).RowHeight = 36
+    With ws.Range("A1:H1")
+        .Merge
+        .Value = "DAILY DATA ENTRY FORM"
+        .Font.Bold = True: .Font.Size = 16: .Font.Color = COL_WHITE
+        .Interior.Color = COL_HEADER
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+    End With
+
+    ' ── Row 2: Instructions ───────────────────────────────────────────────────
+    ws.Rows(2).RowHeight = 28
+    With ws.Range("A2:H2")
+        .Merge
+        .Value = "Fill in shift data for the day, then click SUBMIT DAY." & _
+                 "  The dashboard calculates all KPIs for the day, week, and month automatically."
+        .Font.Italic = True: .Font.Size = 9: .Font.Color = RGB(155, 100, 0)
+        .Interior.Color = RGB(255, 244, 204)
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+        .WrapText = True
+    End With
+
+    ' Row 3: Spacer
+    ws.Rows(3).RowHeight = 10
+
+    ' ── Row 4: Business Date input ────────────────────────────────────────────
+    ws.Rows(4).RowHeight = 28
+    ws.Range("A4").Value = "Business Date:"
+    ws.Range("A4").Font.Bold = True: ws.Range("A4").Font.Size = 11
+    ws.Range("A4").HorizontalAlignment = xlRight: ws.Range("A4").VerticalAlignment = xlCenter
+    With ws.Range("B4:C4")
+        .Merge
+        .Value = Date      ' default: today
+        .NumberFormat = "dd/mm/yyyy"
+        .Font.Bold = True: .Font.Size = 13: .Font.Color = COL_HEADER
+        .Interior.Color = COL_WHITE
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+        .Borders.LineStyle = xlContinuous: .Borders.Color = RGB(0, 112, 192)
+    End With
+    ws.Range("D4").Value = "(change if entering data for a past date)"
+    ws.Range("D4").Font.Italic = True: ws.Range("D4").Font.Size = 8
+    ws.Range("D4").Font.Color = RGB(128, 128, 128): ws.Range("D4").VerticalAlignment = xlCenter
+
+    ' Row 5: Spacer
+    ws.Rows(5).RowHeight = 8
+
+    ' ── Row 6: SHIFT DATA section header ─────────────────────────────────────
+    ws.Rows(6).RowHeight = 20
+    With ws.Range("A6:H6")
+        .Merge: .Value = "  SHIFT DATA  —  enter values for each active shift"
+        .Font.Bold = True: .Font.Size = 11: .Font.Color = COL_WHITE
+        .Interior.Color = RGB(46, 64, 87)
+        .HorizontalAlignment = xlLeft: .VerticalAlignment = xlCenter
+    End With
+
+    ' ── Row 7: Column headers ─────────────────────────────────────────────────
+    ws.Rows(7).RowHeight = 18
+    Dim shiftHdrs As Variant
+    shiftHdrs = Array("Shift", "Cartons Shipped", "Total Staff", "Target / Person", "Audit Count")
+    Dim hi As Integer
+    For hi = 0 To 4
+        With ws.Cells(7, hi + 1)
+            .Value = shiftHdrs(hi)
+            .Font.Bold = True: .Font.Size = 10: .Font.Color = COL_WHITE
+            .Interior.Color = RGB(0, 112, 192)
+            .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+            .Borders.LineStyle = xlContinuous
+        End With
+    Next hi
+
+    ' ── Row 8: Day shift ──────────────────────────────────────────────────────
+    ws.Rows(8).RowHeight = 30
+    With ws.Range("A8")
+        .Value = "Day"
+        .Font.Bold = True: .Font.Size = 12
+        .Interior.Color = COL_WHITE
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+        .Borders.LineStyle = xlContinuous: .Borders.Color = RGB(0, 112, 192)
+    End With
+    Dim dc As Integer
+    For dc = 2 To 5
+        With ws.Cells(8, dc)
+            .Value = 0
+            .Font.Size = 12: .Font.Color = COL_HEADER
+            .Interior.Color = COL_WHITE
+            .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+            .Borders.LineStyle = xlContinuous: .Borders.Color = RGB(0, 112, 192)
+        End With
+    Next dc
+
+    ' ── Row 9: Night shift ────────────────────────────────────────────────────
+    ws.Rows(9).RowHeight = 30
+    With ws.Range("A9")
+        .Value = "Night"
+        .Font.Bold = True: .Font.Size = 12
+        .Interior.Color = RGB(247, 247, 247)
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+        .Borders.LineStyle = xlContinuous: .Borders.Color = RGB(0, 112, 192)
+    End With
+    For dc = 2 To 5
+        With ws.Cells(9, dc)
+            .Value = 0
+            .Font.Size = 12: .Font.Color = COL_HEADER
+            .Interior.Color = RGB(247, 247, 247)
+            .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+            .Borders.LineStyle = xlContinuous: .Borders.Color = RGB(0, 112, 192)
+        End With
+    Next dc
+
+    ' Row 10: Spacer
+    ws.Rows(10).RowHeight = 8
+
+    ' ── Row 11: EXCEPTION COUNTS section header ───────────────────────────────
+    ws.Rows(11).RowHeight = 20
+    With ws.Range("A11:H11")
+        .Merge: .Value = "  EXCEPTION COUNTS  (optional — leave blank to use live values from data sheets)"
+        .Font.Bold = True: .Font.Size = 11: .Font.Color = COL_WHITE
+        .Interior.Color = RGB(192, 0, 0)
+        .HorizontalAlignment = xlLeft: .VerticalAlignment = xlCenter
+    End With
+
+    ' ── Row 12: HRP Open Items ────────────────────────────────────────────────
+    ws.Rows(12).RowHeight = 24
+    ws.Range("A12").Value = "HRP Open Items:"
+    ws.Range("A12").Font.Bold = True
+    ws.Range("A12").HorizontalAlignment = xlRight: ws.Range("A12").VerticalAlignment = xlCenter
+    With ws.Range("B12")
+        .Value = ""
+        .Interior.Color = COL_WHITE
+        .Borders.LineStyle = xlContinuous: .Borders.Color = RGB(192, 0, 0)
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+    End With
+    ws.Range("C12").Value = "(blank = live count from IN_HRP)"
+    ws.Range("C12").Font.Italic = True: ws.Range("C12").Font.Size = 8
+    ws.Range("C12").Font.Color = RGB(128, 128, 128): ws.Range("C12").VerticalAlignment = xlCenter
+
+    ' ── Row 13: Packed Overdue ────────────────────────────────────────────────
+    ws.Rows(13).RowHeight = 24
+    ws.Range("A13").Value = "Packed Overdue:"
+    ws.Range("A13").Font.Bold = True
+    ws.Range("A13").HorizontalAlignment = xlRight: ws.Range("A13").VerticalAlignment = xlCenter
+    With ws.Range("B13")
+        .Value = ""
+        .Interior.Color = COL_WHITE
+        .Borders.LineStyle = xlContinuous: .Borders.Color = RGB(192, 0, 0)
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+    End With
+    ws.Range("C13").Value = "(blank = live count from IN_PACKED)"
+    ws.Range("C13").Font.Italic = True: ws.Range("C13").Font.Size = 8
+    ws.Range("C13").Font.Color = RGB(128, 128, 128): ws.Range("C13").VerticalAlignment = xlCenter
+
+    ' Row 14: Spacer
+    ws.Rows(14).RowHeight = 12
+
+    ' ── Row 15: Button placeholder rows (actual buttons added by AddButtons) ──
+    ws.Rows(15).RowHeight = 30
+    ws.Rows(16).RowHeight = 16
+
+    ' Submit Day placeholder
+    With ws.Range("B15:C15")
+        .Merge: .Value = "[ SUBMIT DAY ]"
+        .Font.Bold = True: .Font.Size = 10: .Font.Color = COL_HEADER
+        .Interior.Color = RGB(200, 230, 201)
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+        .Borders.LineStyle = xlContinuous
+    End With
+    With ws.Range("B16:C16")
+        .Merge: .Value = "Save data and update HISTORY"
+        .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
+        .HorizontalAlignment = xlCenter
+    End With
+
+    ' Clear Form placeholder
+    With ws.Range("E15:F15")
+        .Merge: .Value = "[ CLEAR FORM ]"
+        .Font.Bold = True: .Font.Size = 10: .Font.Color = COL_HEADER
+        .Interior.Color = RGB(255, 235, 238)
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+        .Borders.LineStyle = xlContinuous
+    End With
+    With ws.Range("E16:F16")
+        .Merge: .Value = "Reset all fields to zero / today"
+        .Font.Italic = True: .Font.Size = 8: .Font.Color = RGB(102, 102, 102)
+        .HorizontalAlignment = xlCenter
+    End With
+
+    ' Row 17: Spacer
+    ws.Rows(17).RowHeight = 8
+
+    ' Row 18: Back to DASHBOARD hyperlink
+    ws.Rows(18).RowHeight = 16
+    With ws.Range("B18")
+        .Value = "<< Back to DASHBOARD"
+        .Font.Bold = True: .Font.Color = RGB(0, 70, 170)
+        .Font.Underline = xlUnderlineStyleSingle
+    End With
+    ws.Hyperlinks.Add Anchor:=ws.Range("B18"), Address:="", _
+        SubAddress:="#DASHBOARD!A1", TextToDisplay:="<< Back to DASHBOARD"
+
+    ' Column widths
+    ws.Columns("A:A").ColumnWidth = 18
+    ws.Columns("B:E").ColumnWidth = 16
+    ws.Columns("F:F").ColumnWidth = 14
+    ws.Columns("G:H").ColumnWidth = 20
+
+    ws.Tab.Color = RGB(0, 176, 240)
+End Sub
+
+'================================================================================
+' FILL DATA PUBLIC MACROS
+'================================================================================
+
+' Navigate to the DAILY_ENTRY form
+Public Sub NavigateToDailyEntry()
+    On Error Resume Next
+    Dim wsDE As Worksheet
+    Set wsDE = ThisWorkbook.Worksheets("DAILY_ENTRY")
+    If Not wsDE Is Nothing Then
+        wsDE.Activate
+        wsDE.Range("B4").Select
+    End If
+    On Error GoTo 0
+End Sub
+
+' Clear the DAILY_ENTRY form fields back to defaults
+Public Sub ClearDailyForm()
+    Dim wsDE As Worksheet
+    On Error Resume Next
+    Set wsDE = ThisWorkbook.Worksheets("DAILY_ENTRY")
+    On Error GoTo 0
+    If wsDE Is Nothing Then Exit Sub
+
+    wsDE.Range("B4").Value  = Date   ' reset date to today
+    wsDE.Range("B8").Value  = 0 : wsDE.Range("C8").Value = 0
+    wsDE.Range("D8").Value  = 0 : wsDE.Range("E8").Value = 0
+    wsDE.Range("B9").Value  = 0 : wsDE.Range("C9").Value = 0
+    wsDE.Range("D9").Value  = 0 : wsDE.Range("E9").Value = 0
+    wsDE.Range("B12").Value = ""
+    wsDE.Range("B13").Value = ""
+End Sub
+
+' Submit daily shift data from DAILY_ENTRY to HISTORY, T_DISPATCH_KPI, and
+' the supporting input tables (IN_TARGETS_DAILY and IN_AUDIT_LOG).
+Public Sub SubmitDailyData()
+    Dim wsDE As Worksheet
+    On Error Resume Next
+    Set wsDE = ThisWorkbook.Worksheets("DAILY_ENTRY")
+    On Error GoTo 0
+    If wsDE Is Nothing Then
+        MsgBox "DAILY_ENTRY sheet not found.", vbCritical
+        Exit Sub
+    End If
+
+    ' ── Read and validate Business Date ────────────────────────────────────────
+    Dim entryDateVal As Variant
+    entryDateVal = wsDE.Range("B4").Value
+    If IsEmpty(entryDateVal) Or IsError(entryDateVal) Or Not IsDate(entryDateVal) Then
+        MsgBox "Please enter a valid Business Date in the Date field (row 4).", _
+               vbExclamation, "Missing Date"
+        wsDE.Range("B4").Select
+        Exit Sub
+    End If
+    Dim entryDate As Date
+    entryDate = CDate(entryDateVal)
+
+    ' ── Read shift data ────────────────────────────────────────────────────────
+    Dim dayShipped  As Long:   dayShipped  = _DELong(wsDE.Range("B8").Value)
+    Dim dayStaff    As Long:   dayStaff    = _DELong(wsDE.Range("C8").Value)
+    Dim dayTarget   As Double: dayTarget   = _DEDbl(wsDE.Range("D8").Value)
+    Dim dayAudit    As Long:   dayAudit    = _DELong(wsDE.Range("E8").Value)
+
+    Dim nightShipped As Long:   nightShipped = _DELong(wsDE.Range("B9").Value)
+    Dim nightStaff   As Long:   nightStaff   = _DELong(wsDE.Range("C9").Value)
+    Dim nightTarget  As Double: nightTarget  = _DEDbl(wsDE.Range("D9").Value)
+    Dim nightAudit   As Long:   nightAudit   = _DELong(wsDE.Range("E9").Value)
+
+    Dim dayHasData   As Boolean: dayHasData   = (dayShipped > 0 Or dayStaff > 0)
+    Dim nightHasData As Boolean: nightHasData = (nightShipped > 0 Or nightStaff > 0)
+
+    If Not dayHasData And Not nightHasData Then
+        MsgBox "Please enter Cartons Shipped and/or Total Staff for at least one shift.", _
+               vbExclamation, "No Shift Data"
+        Exit Sub
+    End If
+
+    ' ── Exception count overrides ──────────────────────────────────────────────
+    Dim hrpOpen As Long, packedOverdue As Long
+    Dim hrpVal As Variant: hrpVal = wsDE.Range("B12").Value
+    Dim pckVal As Variant: pckVal = wsDE.Range("B13").Value
+
+    If IsEmpty(hrpVal) Or IsError(hrpVal) Or hrpVal = "" Then
+        On Error Resume Next
+        hrpOpen = Application.WorksheetFunction.CountIf( _
+            ThisWorkbook.Worksheets("IN_HRP").ListObjects("tblHRP").ListColumns("IncludeInHRP").DataBodyRange, True)
+        On Error GoTo 0
+    Else
+        hrpOpen = _DELong(hrpVal)
+    End If
+
+    If IsEmpty(pckVal) Or IsError(pckVal) Or pckVal = "" Then
+        On Error Resume Next
+        packedOverdue = Application.WorksheetFunction.CountIf( _
+            ThisWorkbook.Worksheets("IN_PACKED").ListObjects("tblPacked").ListColumns("ActionFlag").DataBodyRange, True)
+        On Error GoTo 0
+    Else
+        packedOverdue = _DELong(pckVal)
+    End If
+
+    ' ── Write data ─────────────────────────────────────────────────────────────
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+
+    Dim snapTime As Date: snapTime = Now()
+    Dim rowsAdded As Long: rowsAdded = 0
+
+    If dayHasData Then
+        Call _UpsertKPIRow(entryDate, "Day", dayShipped, dayStaff)
+        If dayTarget > 0 Then Call _UpsertTargets(entryDate, "Day", dayTarget)
+        Call _UpsertAuditLog(entryDate, "Day", dayAudit)
+        Call _AppendHistory(snapTime, entryDate, "Day", dayShipped, dayStaff, _
+                            dayTarget, dayAudit, hrpOpen, packedOverdue)
+        rowsAdded = rowsAdded + 1
+    End If
+
+    If nightHasData Then
+        Call _UpsertKPIRow(entryDate, "Night", nightShipped, nightStaff)
+        If nightTarget > 0 Then Call _UpsertTargets(entryDate, "Night", nightTarget)
+        Call _UpsertAuditLog(entryDate, "Night", nightAudit)
+        Call _AppendHistory(snapTime, entryDate, "Night", nightShipped, nightStaff, _
+                            nightTarget, nightAudit, hrpOpen, packedOverdue)
+        rowsAdded = rowsAdded + 1
+    End If
+
+    Application.Calculation = xlCalculationAutomatic
+    Application.Calculate
+    Application.ScreenUpdating = True
+
+    MsgBox "Daily data submitted for " & Format(entryDate, "dd/mm/yyyy") & "." & vbCrLf & _
+           rowsAdded & " shift record(s) saved to HISTORY and T_DISPATCH_KPI.", _
+           vbInformation, "Submit Complete"
+End Sub
+
+'================================================================================
+' FILL DATA HELPER ROUTINES (private — called only from SubmitDailyData)
+'================================================================================
+
+' Upsert a row in T_DISPATCH_KPI for the given date+shift, writing raw values
+' for ShippedCartons and TotalStaff (the remaining columns stay as formulas).
+Private Sub _UpsertKPIRow(busDate As Date, shiftName As String, _
+                           shipped As Long, staff As Long)
+    Dim ws As Worksheet
+    On Error Resume Next: Set ws = ThisWorkbook.Worksheets("T_DISPATCH_KPI"): On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim tbl As ListObject
+    On Error Resume Next: Set tbl = ws.ListObjects("tblDispatchKPI"): On Error GoTo 0
+    If tbl Is Nothing Then Exit Sub
+
+    Dim foundRow As Long: foundRow = 0
+    Dim r As Long
+    Dim dv As Variant, sv As Variant
+    For r = 1 To tbl.ListRows.Count
+        dv = tbl.ListColumns("BusinessDate").DataBodyRange(r).Value
+        sv = tbl.ListColumns("ShiftName").DataBodyRange(r).Value
+        If Not IsError(dv) And Not IsError(sv) Then
+            If IsDate(dv) And CDate(dv) = busDate And sv = shiftName Then
+                foundRow = r: Exit For
+            End If
+        End If
+    Next r
+
+    If foundRow = 0 Then
+        Dim newRow As ListRow
+        Set newRow = tbl.ListRows.Add
+        foundRow = tbl.ListRows.Count
+        tbl.ListColumns("BusinessDate").DataBodyRange(foundRow).Value = busDate
+        tbl.ListColumns("ShiftName").DataBodyRange(foundRow).Value    = shiftName
+    End If
+
+    ' Write values directly — this overrides any existing formula in that cell only.
+    tbl.ListColumns("ShippedCartons").DataBodyRange(foundRow).Value = shipped
+    tbl.ListColumns("TotalStaff").DataBodyRange(foundRow).Value     = staff
+End Sub
+
+' Upsert a row in IN_TARGETS_DAILY for the given date+shift.
+Private Sub _UpsertTargets(busDate As Date, shiftName As String, target As Double)
+    Dim ws As Worksheet
+    On Error Resume Next: Set ws = ThisWorkbook.Worksheets("IN_TARGETS_DAILY"): On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim tbl As ListObject
+    On Error Resume Next: Set tbl = ws.ListObjects("tblTargetsDaily"): On Error GoTo 0
+    If tbl Is Nothing Then Exit Sub
+
+    Dim foundRow As Long: foundRow = 0
+    Dim r As Long
+    Dim dv As Variant, sv As Variant
+    For r = 1 To tbl.ListRows.Count
+        dv = tbl.ListColumns("BusinessDate").DataBodyRange(r).Value
+        sv = tbl.ListColumns("ShiftName").DataBodyRange(r).Value
+        If Not IsError(dv) And Not IsError(sv) Then
+            If IsDate(dv) And CDate(dv) = busDate And sv = shiftName Then
+                foundRow = r: Exit For
+            End If
+        End If
+    Next r
+
+    If foundRow = 0 Then
+        Dim newRow As ListRow
+        Set newRow = tbl.ListRows.Add
+        foundRow = tbl.ListRows.Count
+        tbl.ListColumns("BusinessDate").DataBodyRange(foundRow).Value              = busDate
+        tbl.ListColumns("ShiftName").DataBodyRange(foundRow).Value                = shiftName
+        tbl.ListColumns("TargetPerPersonPerShift").DataBodyRange(foundRow).Value  = target
+    Else
+        tbl.ListColumns("TargetPerPersonPerShift").DataBodyRange(foundRow).Value  = target
+    End If
+End Sub
+
+' Upsert a row in IN_AUDIT_LOG for the given date+shift.
+Private Sub _UpsertAuditLog(busDate As Date, shiftName As String, auditCnt As Long)
+    Dim ws As Worksheet
+    On Error Resume Next: Set ws = ThisWorkbook.Worksheets("IN_AUDIT_LOG"): On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim tbl As ListObject
+    On Error Resume Next: Set tbl = ws.ListObjects("tblAuditLog"): On Error GoTo 0
+    If tbl Is Nothing Then Exit Sub
+
+    Dim foundRow As Long: foundRow = 0
+    Dim r As Long
+    Dim dv As Variant, sv As Variant
+    For r = 1 To tbl.ListRows.Count
+        dv = tbl.ListColumns("BusinessDate").DataBodyRange(r).Value
+        sv = tbl.ListColumns("ShiftName").DataBodyRange(r).Value
+        If Not IsError(dv) And Not IsError(sv) Then
+            If IsDate(dv) And CDate(dv) = busDate And sv = shiftName Then
+                foundRow = r: Exit For
+            End If
+        End If
+    Next r
+
+    If foundRow = 0 Then
+        Dim newRow As ListRow
+        Set newRow = tbl.ListRows.Add
+        foundRow = tbl.ListRows.Count
+        tbl.ListColumns("BusinessDate").DataBodyRange(foundRow).Value  = busDate
+        tbl.ListColumns("ShiftName").DataBodyRange(foundRow).Value    = shiftName
+        tbl.ListColumns("Area").DataBodyRange(foundRow).Value         = "Auditing"
+        tbl.ListColumns("AuditCount").DataBodyRange(foundRow).Value   = auditCnt
+    Else
+        tbl.ListColumns("AuditCount").DataBodyRange(foundRow).Value   = auditCnt
+    End If
+End Sub
+
+' Append a row to HISTORY, computing derived KPIs inline so the snapshot is
+' self-contained (does not depend on T_DISPATCH_KPI formula results).
+Private Sub _AppendHistory(snapTime As Date, busDate As Date, shiftName As String, _
+                            shipped As Long, staff As Long, target As Double, _
+                            auditCnt As Long, hrpOpen As Long, packedOverdue As Long)
+    Dim ws As Worksheet
+    On Error Resume Next: Set ws = ThisWorkbook.Worksheets("HISTORY"): On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    Dim tbl As ListObject
+    On Error Resume Next: Set tbl = ws.ListObjects("tblHistory"): On Error GoTo 0
+    If tbl Is Nothing Then Exit Sub
+
+    Dim expected As Double: expected = staff * target
+    Dim perfPct  As Double: perfPct  = IIf(expected > 0, shipped / expected, 0)
+    Dim rag      As String
+    If perfPct >= 1 Then
+        rag = "Green"
+    ElseIf perfPct >= 0.9 Then
+        rag = "Amber"
+    Else
+        rag = "Red"
+    End If
+
+    Dim newRow As ListRow
+    Set newRow = tbl.ListRows.Add
+    newRow.Range(1).Value  = snapTime
+    newRow.Range(2).Value  = busDate
+    newRow.Range(3).Value  = shiftName
+    newRow.Range(4).Value  = shipped
+    newRow.Range(5).Value  = staff
+    newRow.Range(6).Value  = expected
+    newRow.Range(7).Value  = perfPct
+    newRow.Range(8).Value  = rag
+    newRow.Range(9).Value  = hrpOpen
+    newRow.Range(10).Value = packedOverdue
+    newRow.Range(11).Value = auditCnt
+End Sub
+
+' Safe Variant-to-Long conversion for form input cells.
+Private Function _DELong(v As Variant) As Long
+    If IsEmpty(v) Or IsError(v) Or v = "" Then
+        _DELong = 0
+    ElseIf IsNumeric(v) Then
+        _DELong = CLng(v)
+    Else
+        _DELong = 0
+    End If
+End Function
+
+' Safe Variant-to-Double conversion for form input cells.
+Private Function _DEDbl(v As Variant) As Double
+    If IsEmpty(v) Or IsError(v) Or v = "" Then
+        _DEDbl = 0
+    ElseIf IsNumeric(v) Then
+        _DEDbl = CDbl(v)
+    Else
+        _DEDbl = 0
+    End If
+End Function
