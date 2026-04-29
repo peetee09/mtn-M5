@@ -216,6 +216,18 @@ Private Sub BuildCONFIG(wb As Workbook)
     tblAreas.TableStyle = "TableStyleMedium2"
 
     ws.Columns("A:F").AutoFit
+    Call AddSheetDoc(ws, 8, _
+        "Global rules and lookup lists for the entire workbook. " & _
+        "KPI thresholds, shift schedules, and area names are defined here and " & _
+        "referenced by IN_HRP, IN_PACKED, and T_DISPATCH_KPI formulas.", _
+        "IN: manual setup by system administrator  |  " & _
+        "OUT: -> IN_HRP reads HRP_MaxDaysToShow; " & _
+        "-> IN_PACKED reads Packed_MaxAgeDays; " & _
+        "-> T_DISPATCH_KPI reads Amber_Threshold, Green_Threshold, Audit_SampleSize; " & _
+        "-> IN_STAFFING / IN_AUDIT_LOG use the Area List for validation", _
+        "Edit B11:B15 to change KPI thresholds. " & _
+        "Edit E5:E7 to add or rename work areas. " & _
+        "Do not rename or delete this sheet -- every other sheet depends on it.")
     ws.Tab.Color = RGB(128, 128, 128)
 End Sub
 
@@ -273,12 +285,16 @@ Private Sub BuildIN_PACKED(wb As Workbook)
     tbl.ListColumns("AgeDays").DataBodyRange(1).Formula = "=TODAY()-INT([@LAST_PACKED])"
     ' IsShipped (col 16 = P)
     tbl.ListColumns("IsShipped").DataBodyRange(1).Formula = "=COUNTIF(tblShipped[LPN],[@LPN])>0"
-    ' PackedStatus
+    ' PackedStatus and ActionFlag reference CONFIG so that changing
+    ' Packed_MaxAgeDays in CONFIG automatically changes the overdue threshold
+    ' everywhere — linking the CONFIG sheet to this data sheet.
     tbl.ListColumns("PackedStatus").DataBodyRange(1).Formula = _
-        "=IF([@IsShipped],""Shipped"",IF([@AgeDays]>2,""Overdue"",""Pending""))"
+        "=IF([@IsShipped],""Shipped"",IF([@AgeDays]>IFERROR(INDEX(tblConfig_Rules[Value]," & _
+        "MATCH(""Packed_MaxAgeDays"",tblConfig_Rules[RuleName],0)),2),""Overdue"",""Pending""))"
     ' ActionFlag
     tbl.ListColumns("ActionFlag").DataBodyRange(1).Formula = _
-        "=AND(NOT([@IsShipped]),[@AgeDays]>2)"
+        "=AND(NOT([@IsShipped]),[@AgeDays]>IFERROR(INDEX(tblConfig_Rules[Value]," & _
+        "MATCH(""Packed_MaxAgeDays"",tblConfig_Rules[RuleName],0)),2))"
 
     ' Format date columns
     ws.Columns("I:I").NumberFormat = "dd/mm/yyyy hh:mm"
@@ -306,6 +322,17 @@ Private Sub BuildIN_PACKED(wb As Workbook)
     ActiveWindow.FreezePanes = True
 
     ws.Columns("A:R").AutoFit
+    Call AddSheetDoc(ws, 20, _
+        "WMS feed: packed LPN inventory awaiting shipment. " & _
+        "Overdue items are flagged using the Packed_MaxAgeDays threshold set in CONFIG.", _
+        "IN: WMS packed report (paste daily into cols A-N)  |  " & _
+        "OUT: -> IN_SHIPPED_LPNS cross-checks IsShipped; " & _
+        "-> T_DISPATCH_KPI counts PackedOverdue; " & _
+        "-> ACTION_PACKED (via POPULATE ACTION SHEETS); " & _
+        "-> DATA_QUALITY", _
+        "1. Paste latest WMS packed LPN export into cols A-N daily. " & _
+        "2. Cols O-R (AgeDays, IsShipped, PackedStatus, ActionFlag) recalculate automatically. " & _
+        "3. Rows where ActionFlag=TRUE appear in ACTION_PACKED after clicking POPULATE ACTION SHEETS.")
     ws.Tab.Color = RGB(0, 112, 192)
 
     ' Protect sheet - allow editing in non-formula columns only
@@ -367,8 +394,13 @@ Private Sub BuildIN_HRP(wb As Workbook)
         "=IF([@OLPN]<>"""",[@OLPN],[@XREF_OLPN])"
     tbl.ListColumns("IsAcknowledged").DataBodyRange(1).Formula = _
         "=[@STORE_ACK_STATUS]=""Y"""
+    ' IncludeInHRP reads HRP_MaxDaysToShow from CONFIG so changing that rule
+    ' automatically changes the inclusion threshold here — linking CONFIG to
+    ' this data sheet.
     tbl.ListColumns("IncludeInHRP").DataBodyRange(1).Formula = _
-        "=AND([@STORE_ACK_STATUS]=""N"",[@DAYS_SINCE_AVAILABLE_FOR_CITY]<=1)"
+        "=AND([@STORE_ACK_STATUS]=""N""," & _
+        "[@DAYS_SINCE_AVAILABLE_FOR_CITY]<=IFERROR(INDEX(tblConfig_Rules[Value]," & _
+        "MATCH(""HRP_MaxDaysToShow"",tblConfig_Rules[RuleName],0)),1))"
     tbl.ListColumns("AgeBucket").DataBodyRange(1).Formula = _
         "=IF([@DAYS_SINCE_AVAILABLE_FOR_CITY]=0,""<24h"",""24h+"")"
 
@@ -395,6 +427,17 @@ Private Sub BuildIN_HRP(wb As Workbook)
     ws.Range("A2").Select
     ActiveWindow.FreezePanes = True
     ws.Columns("A:Q").AutoFit
+    Call AddSheetDoc(ws, 19, _
+        "Hold-for-Release Parcels awaiting city store acknowledgement. " & _
+        "IncludeInHRP flags unacknowledged items within the HRP_MaxDaysToShow threshold set in CONFIG.", _
+        "IN: WMS HRP extract (paste daily into cols A-M)  |  " & _
+        "OUT: -> T_DISPATCH_KPI counts HRPOpen; " & _
+        "-> ACTION_HRP (via POPULATE ACTION SHEETS); " & _
+        "-> DATA_QUALITY", _
+        "1. Paste latest WMS HRP report into cols A-M daily. " & _
+        "2. Set STORE_ACK_STATUS=Y when the city store has acknowledged the carton. " & _
+        "3. Cols N-Q (CartonID, IsAcknowledged, IncludeInHRP, AgeBucket) recalculate automatically. " & _
+        "4. IncludeInHRP=TRUE rows appear in ACTION_HRP after clicking POPULATE ACTION SHEETS.")
     ws.Tab.Color = RGB(0, 176, 240)
 End Sub
 
@@ -452,10 +495,18 @@ Private Sub BuildIN_SHIPPED_LPNS(wb As Workbook)
     ws.Range("A2").Select
     ActiveWindow.FreezePanes = True
     ws.Columns("A:F").AutoFit
+    Call AddSheetDoc(ws, 8, _
+        "Log of all LPNs physically shipped each shift. " & _
+        "This is the primary source for the ShippedCartons KPI.", _
+        "IN: manual entry per shift  |  " & _
+        "OUT: -> IN_PACKED calculates IsShipped (COUNTIF); " & _
+        "-> T_DISPATCH_KPI counts ShippedCartons (COUNTIFS by date+shift); " & _
+        "-> DATA_QUALITY (duplicate check)", _
+        "Add one row per shipped LPN after each shift. " & _
+        "Enter BusinessDate, ShiftName (Day or Night), LPN, and EnteredBy. " & _
+        "DupFlag auto-highlights duplicate LPN entries for the same date and shift.")
     ws.Tab.Color = RGB(0, 176, 80)
 End Sub
-
-' ---- IN_STAFFING ------------------------------------------------------------
 Private Sub BuildIN_STAFFING(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
@@ -505,10 +556,17 @@ Private Sub BuildIN_STAFFING(wb As Workbook)
     ws.Range("A2").Select
     ActiveWindow.FreezePanes = True
     ws.Columns("A:D").AutoFit
+    Call AddSheetDoc(ws, 6, _
+        "Headcount available per shift and work area. " & _
+        "TotalStaff is summed by date+shift in T_DISPATCH_KPI to calculate ExpectedCartons.", _
+        "IN: manual entry per shift  |  " & _
+        "OUT: -> T_DISPATCH_KPI (TotalStaff column via SUMIFS)", _
+        "Enter one row per shift per work area each day. " & _
+        "ShiftName must be Day or Night. " & _
+        "Area must match an entry in the CONFIG Area List (E5:E7). " & _
+        "StaffAvailable = number of pickers/dispatchers on that shift.")
     ws.Tab.Color = RGB(0, 176, 80)
 End Sub
-
-' ---- IN_TARGETS_DAILY -------------------------------------------------------
 Private Sub BuildIN_TARGETS_DAILY(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
@@ -546,10 +604,16 @@ Private Sub BuildIN_TARGETS_DAILY(wb As Workbook)
     ws.Range("A2").Select
     ActiveWindow.FreezePanes = True
     ws.Columns("A:C").AutoFit
+    Call AddSheetDoc(ws, 5, _
+        "Daily carton target per person per shift. " & _
+        "Combined with TotalStaff to calculate ExpectedCartons in T_DISPATCH_KPI.", _
+        "IN: manual entry before each shift  |  " & _
+        "OUT: -> T_DISPATCH_KPI (TargetPerPerson -> ExpectedCartons via SUMIFS)", _
+        "Enter one row per shift per business date. " & _
+        "TargetPerPersonPerShift = the number of cartons one person is expected to ship in that shift. " & _
+        "Can be set once per week if the target does not change daily.")
     ws.Tab.Color = RGB(0, 176, 80)
 End Sub
-
-' ---- IN_AUDIT_LOG -----------------------------------------------------------
 Private Sub BuildIN_AUDIT_LOG(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
@@ -597,10 +661,19 @@ Private Sub BuildIN_AUDIT_LOG(wb As Workbook)
     ws.Range("A2").Select
     ActiveWindow.FreezePanes = True
     ws.Columns("A:E").AutoFit
+    Call AddSheetDoc(ws, 7, _
+        "Quality audit counts per shift and work area. " & _
+        "AuditPct in T_DISPATCH_KPI compares AuditCount against the " & _
+        "Audit_SampleSize threshold set in CONFIG.", _
+        "IN: manual entry after each shift  |  " & _
+        "OUT: -> T_DISPATCH_KPI (AuditCount, AuditPct via SUMIFS); " & _
+        "-> DASHBOARD AUDIT OVERVIEW section", _
+        "Enter one row per shift per area after completing audits. " & _
+        "AuditCount = number of audits completed in that shift/area. " & _
+        "Compare to Audit_SampleSize in CONFIG (default 20). " & _
+        "Area must match CONFIG Area List.")
     ws.Tab.Color = RGB(112, 173, 71)
 End Sub
-
-' ---- T_DISPATCH_KPI ---------------------------------------------------------
 Private Sub BuildT_DISPATCH_KPI(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
@@ -631,16 +704,25 @@ Private Sub BuildT_DISPATCH_KPI(wb As Workbook)
         "=COUNTIFS(tblShipped[BusinessDate],[@BusinessDate],tblShipped[ShiftName],[@ShiftName])"
     tbl.ListColumns("TotalStaff").DataBodyRange(1).Formula = _
         "=SUMIFS(tblStaffing[StaffAvailable],tblStaffing[BusinessDate],[@BusinessDate],tblStaffing[ShiftName],[@ShiftName])"
-    ' TargetPerPerson: array formula for Excel 2016 (multi-criteria INDEX/MATCH)
-    tbl.ListColumns("TargetPerPerson").DataBodyRange(1).FormulaArray = _
-        "=IFERROR(INDEX(tblTargetsDaily[TargetPerPersonPerShift],MATCH(1,(tblTargetsDaily[BusinessDate]=[@BusinessDate])*(tblTargetsDaily[ShiftName]=[@ShiftName]),0)),0)"
+    ' TargetPerPerson: use SUMIFS instead of array formula — SUMIFS is simpler,
+    ' Excel 2016-compatible without Ctrl+Shift+Enter, and consistent with
+    ' the generate_kpi_workbook.py implementation.
+    tbl.ListColumns("TargetPerPerson").DataBodyRange(1).Formula = _
+        "=IFERROR(SUMIFS(tblTargetsDaily[TargetPerPersonPerShift]," & _
+        "tblTargetsDaily[BusinessDate],[@BusinessDate]," & _
+        "tblTargetsDaily[ShiftName],[@ShiftName]),0)"
 
     tbl.ListColumns("ExpectedCartons").DataBodyRange(1).Formula = _
         "=[@TotalStaff]*[@TargetPerPerson]"
     tbl.ListColumns("PerformancePct").DataBodyRange(1).Formula = _
         "=IFERROR([@ShippedCartons]/[@ExpectedCartons],0)"
+    ' RAG references CONFIG thresholds so changing Green_Threshold or
+    ' Amber_Threshold in CONFIG automatically updates the RAG logic here.
     tbl.ListColumns("RAG").DataBodyRange(1).Formula = _
-        "=IF([@PerformancePct]>=1,""Green"",IF([@PerformancePct]>=0.9,""Amber"",""Red""))"
+        "=IF([@PerformancePct]>=IFERROR(INDEX(tblConfig_Rules[Value]," & _
+        "MATCH(""Green_Threshold"",tblConfig_Rules[RuleName],0)),1),""Green""," & _
+        "IF([@PerformancePct]>=IFERROR(INDEX(tblConfig_Rules[Value]," & _
+        "MATCH(""Amber_Threshold"",tblConfig_Rules[RuleName],0)),0.9),""Amber"",""Red""))"
 
     ' Audit metrics
     tbl.ListColumns("AuditCount").DataBodyRange(1).Formula = _
@@ -686,10 +768,21 @@ Private Sub BuildT_DISPATCH_KPI(wb As Workbook)
     ws.Range("A2").Select
     ActiveWindow.FreezePanes = True
     ws.Columns("A:M").AutoFit
+    Call AddSheetDoc(ws, 15, _
+        "Auto-calculated per-shift KPI summary table. " & _
+        "All formula columns recalculate automatically -- do not enter data here directly. " & _
+        "RAG uses CONFIG Green_Threshold and Amber_Threshold; TargetPerPerson reads IN_TARGETS_DAILY.", _
+        "IN: formulas read from IN_SHIPPED_LPNS (ShippedCartons), " & _
+        "IN_STAFFING (TotalStaff), IN_TARGETS_DAILY (TargetPerPerson), " & _
+        "IN_AUDIT_LOG (AuditCount), IN_HRP (HRPOpen), IN_PACKED (PackedOverdue), " & _
+        "CONFIG (thresholds)  |  " & _
+        "OUT: -> T_DISPATCH_DAILY (daily aggregates); -> DASHBOARD (KPI cards); " & _
+        "-> HISTORY (via TAKE DAILY SNAPSHOT)", _
+        "Rows are created by DAILY_ENTRY (SUBMIT DAY button) or by manually " & _
+        "typing a BusinessDate and ShiftName -- all other columns calculate automatically. " & _
+        "Do not overwrite formula cells.")
     ws.Tab.Color = RGB(255, 192, 0)
 End Sub
-
-' ---- T_DISPATCH_DAILY -------------------------------------------------------
 Private Sub BuildT_DISPATCH_DAILY(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
@@ -729,6 +822,13 @@ Private Sub BuildT_DISPATCH_DAILY(wb As Workbook)
     ws.Range("A2").Select
     ActiveWindow.FreezePanes = True
     ws.Columns("A:E").AutoFit
+    Call AddSheetDoc(ws, 7, _
+        "Daily aggregate KPIs -- sums Day and Night shift data into one row per date. " & _
+        "Used by the DASHBOARD weekly/monthly summaries and CHARTS trend lines.", _
+        "IN: formulas read from T_DISPATCH_KPI (summed by BusinessDate via SUMIF)  |  " & _
+        "OUT: -> DASHBOARD (Today/Weekly/Monthly KPI cards); -> CHARTS (daily trend charts)", _
+        "Fully automatic. Rows here update the moment T_DISPATCH_KPI rows are added. " & _
+        "Do not enter data directly. One row per unique BusinessDate appears automatically.")
     ws.Tab.Color = RGB(255, 192, 0)
 End Sub
 
@@ -774,6 +874,15 @@ Private Sub BuildACTION_HRP(wb As Workbook)
     ws.Range("A2").Select
     ActiveWindow.FreezePanes = True
     ws.Columns("A:L").AutoFit
+    Call AddSheetDoc(ws, 14, _
+        "Working action list for HRP items where IncludeInHRP = TRUE. " & _
+        "Used by the dispatch team to track follow-up with city stores.", _
+        "IN: populated from IN_HRP (rows where IncludeInHRP=TRUE) " & _
+        "via POPULATE ACTION SHEETS button on DASHBOARD  |  " & _
+        "OUT: manual action tracking only -- no formulas read from this sheet", _
+        "1. Click POPULATE ACTION SHEETS on DASHBOARD to refresh. " & _
+        "2. Fill in Owner, ContactedCity (Y/N), ContactTime, and NextStep for each item. " & _
+        "3. Click POPULATE ACTION SHEETS again next day to refresh with latest data.")
     ws.Tab.Color = RGB(192, 0, 0)
 End Sub
 
@@ -814,10 +923,19 @@ Private Sub BuildACTION_PACKED(wb As Workbook)
     ws.Range("A2").Select
     ActiveWindow.FreezePanes = True
     ws.Columns("A:I").AutoFit
+    Call AddSheetDoc(ws, 11, _
+        "Working action list for overdue packed items (ActionFlag=TRUE), " & _
+        "sorted by AgeDays descending (oldest first). " & _
+        "The overdue threshold is Packed_MaxAgeDays in CONFIG.", _
+        "IN: populated from IN_PACKED (rows where ActionFlag=TRUE) " & _
+        "via POPULATE ACTION SHEETS button on DASHBOARD  |  " & _
+        "OUT: manual action tracking only -- no formulas read from this sheet", _
+        "1. Click POPULATE ACTION SHEETS on DASHBOARD to refresh. " & _
+        "2. Fill in HoldReason, Owner, and PlannedShipTime for each overdue LPN. " & _
+        "3. Once shipped, re-paste IN_PACKED data and click POPULATE again -- " & _
+        "shipped items will no longer appear.")
     ws.Tab.Color = RGB(192, 0, 0)
 End Sub
-
-' ---- HISTORY ----------------------------------------------------------------
 Private Sub BuildHISTORY(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
@@ -843,10 +961,17 @@ Private Sub BuildHISTORY(wb As Workbook)
     ws.Columns("A:B").NumberFormat = "dd/mm/yyyy hh:mm"
     ws.Columns("G:G").NumberFormat = "0.0%"
     ws.Columns("A:K").AutoFit
+    Call AddSheetDoc(ws, 13, _
+        "Immutable time-series log of KPI snapshots. " & _
+        "Each row is a point-in-time record of one shift's KPIs. " & _
+        "Used for trend analysis, auditing, and the CHARTS sheet.", _
+        "IN: populated from T_DISPATCH_KPI via TAKE DAILY SNAPSHOT button " & _
+        "(one row per shift per snapshot)  |  OUT: -> CHARTS (historical trend charts)", _
+        "Click TAKE DAILY SNAPSHOT on DASHBOARD at the end of each shift or day. " & _
+        "Do not delete rows -- this is the audit trail. " & _
+        "Filter by BusinessDate or ShiftName to analyse specific periods.")
     ws.Tab.Color = RGB(128, 128, 128)
 End Sub
-
-' ---- DATA_QUALITY -----------------------------------------------------------
 Private Sub BuildDATA_QUALITY(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
@@ -910,10 +1035,17 @@ Private Sub BuildDATA_QUALITY(wb As Workbook)
 
     ws.Range("A3:D" & (8 + 4)).Borders.LineStyle = xlContinuous
     ws.Columns("A:D").AutoFit
+    Call AddSheetDoc(ws, 6, _
+        "Automated validation checks across all input sheets. " & _
+        "Each row runs a live formula and shows OK (green) or WARNING (amber). " & _
+        "Review this sheet after each data paste to catch issues early.", _
+        "IN: live formulas read from tblHRP, tblPacked, tblShipped, tblStaffing  |  " & _
+        "OUT: read-only validation -- no other sheet reads from DATA_QUALITY", _
+        "Review daily after updating input sheets. " & _
+        "Any WARNING (amber) indicates a data issue in the referenced input sheet. " & _
+        "Fix the issue in the source sheet, then press F9 to recalculate and confirm it clears.")
     ws.Tab.Color = RGB(255, 192, 0)
 End Sub
-
-' ---- DASHBOARD --------------------------------------------------------------
 Private Sub BuildDASHBOARD(wb As Workbook)
     Dim ws As Worksheet
     Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
@@ -1276,10 +1408,19 @@ Private Sub BuildDASHBOARD(wb As Workbook)
 
     ws.Columns("A:A").ColumnWidth = 2
     ws.Columns("B:N").ColumnWidth = 15
+    Call AddSheetDoc(ws, 16, _
+        "Central KPI hub showing real-time performance across HRP, packed, " & _
+        "dispatch, audits, and staffing. All KPI cards update live as input sheets are populated.", _
+        "IN: formulas read from tblDispatchKPI, tblDispatchDaily, " & _
+        "tblHRP, tblPacked, tblShipped, tblAuditLog, tblConfig_Rules  |  " & _
+        "OUT: QUICK NAVIGATION hyperlinks to all other sheets; " & _
+        "VBA buttons trigger macros (REFRESH ALL, SNAPSHOT, POPULATE, FILL DATA)", _
+        "Use QUICK NAVIGATION links to jump to any sheet. " & _
+        "Click FILL DATA / SUBMIT DAY to enter daily shift data. " & _
+        "Click TAKE DAILY SNAPSHOT to archive today's KPIs to HISTORY. " & _
+        "Click POPULATE ACTION SHEETS to refresh ACTION_HRP and ACTION_PACKED.")
     ws.Tab.Color = RGB(0, 112, 192)
 End Sub
-
-' Helper: full-width section header bar
 Private Sub MakeSectionHeader(ws As Worksheet, addr As String, _
                                text As String, bgColor As Long)
     With ws.Range(addr)
@@ -1461,11 +1602,117 @@ Private Sub BuildCHARTS(wb As Workbook)
     End With
 
     ws.Tab.Color = RGB(0, 112, 192)
+    Call AddSheetDoc(ws, 15, _
+        "Auto-updating performance charts for trend analysis and reporting. " & _
+        "All 5 charts refresh automatically as data is added to the input sheets.", _
+        "IN: T_DISPATCH_DAILY (daily trend / staff), " & _
+        "T_DISPATCH_KPI (per-shift cartons / audit %), " & _
+        "HISTORY (HRP and packed overdue historical trend)  |  " & _
+        "OUT: read-only visualisation -- no other sheet reads from CHARTS", _
+        "Charts update automatically -- no manual action needed. " & _
+        "Click TAKE DAILY SNAPSHOT on DASHBOARD to add data points to the " & _
+        "HRP and Packed Overdue historical trend chart (Chart 3). " & _
+        "Use Excel Print / Export for reporting.")
 End Sub
 
-'================================================================================
-' UTILITY ROUTINES
-'================================================================================
+' ─── AddSheetDoc ────────────────────────────────────────────────────────────
+' Adds a 5-row documentation panel to the right of a worksheet's data area,
+' starting at (row 1, docCol).  The panel is 4 columns wide and contains:
+'
+'   Row 1 : Banner header "[i] SHEET GUIDE — <sheet name>"
+'   Row 2 : PURPOSE   label | purpose text
+'   Row 3 : DATA FLOW label | data flow text
+'   Row 4 : HOW TO USE label | how-to-use text
+'   Row 5 : "<< Back to DASHBOARD" navigation hyperlink
+'
+' Purpose:   each sheet gets a visible guide so operators immediately know
+'            what the sheet does, what feeds into it, and how to use it.
+'
+' Parameters:
+'   ws        — target worksheet
+'   docCol    — first column of the panel (1-based; should be 2+ past last data col)
+'   purpose   — one-sentence sheet purpose
+'   dataFlow  — "IN: … | OUT: …" description
+'   howToUse  — brief step-by-step usage summary
+Private Sub AddSheetDoc(ws As Worksheet, docCol As Integer, _
+                         purpose As String, dataFlow As String, howToUse As String)
+    Dim endCol As Integer: endCol = docCol + 3   ' panel is 4 columns wide
+
+    ' Row 1: Banner
+    ws.Range(ws.Cells(1, docCol), ws.Cells(1, endCol)).Merge
+    With ws.Cells(1, docCol)
+        .Value = "[i] SHEET GUIDE " & ChrW(8212) & "  " & ws.Name
+        .Font.Bold = True: .Font.Size = 9: .Font.Color = COL_WHITE
+        .Interior.Color = COL_HEADER
+        .HorizontalAlignment = xlLeft: .VerticalAlignment = xlCenter
+        .IndentLevel = 1
+    End With
+
+    ' Rows 2-4: Label + Text pairs
+    Dim labels(2) As String, texts(2) As String
+    labels(0) = "PURPOSE:":    texts(0) = purpose
+    labels(1) = "DATA FLOW:":  texts(1) = dataFlow
+    labels(2) = "HOW TO USE:": texts(2) = howToUse
+
+    Dim i As Integer
+    For i = 0 To 2
+        Dim rowIdx As Integer: rowIdx = i + 2
+
+        ' Label cell
+        With ws.Cells(rowIdx, docCol)
+            .Value = labels(i)
+            .Font.Bold = True: .Font.Size = 8: .Font.Color = COL_HEADER
+            .Interior.Color = RGB(214, 228, 247)
+            .HorizontalAlignment = xlLeft: .VerticalAlignment = xlTop
+            .IndentLevel = 1
+            .Borders(xlEdgeLeft).LineStyle   = xlContinuous
+            .Borders(xlEdgeLeft).Color       = COL_HEADER
+            .Borders(xlEdgeTop).LineStyle    = xlContinuous
+            .Borders(xlEdgeTop).Color        = COL_HEADER
+            .Borders(xlEdgeBottom).LineStyle = xlContinuous
+            .Borders(xlEdgeBottom).Color     = COL_HEADER
+        End With
+
+        ' Text cell (merged across remaining 3 columns)
+        ws.Range(ws.Cells(rowIdx, docCol + 1), ws.Cells(rowIdx, endCol)).Merge
+        With ws.Cells(rowIdx, docCol + 1)
+            .Value = texts(i)
+            .Font.Size = 8: .Font.Color = RGB(51, 51, 51)
+            .Interior.Color = RGB(239, 247, 255)
+            .HorizontalAlignment = xlLeft: .VerticalAlignment = xlTop
+            .WrapText = True: .IndentLevel = 1
+            .Borders(xlEdgeRight).LineStyle  = xlContinuous
+            .Borders(xlEdgeRight).Color      = COL_HEADER
+            .Borders(xlEdgeTop).LineStyle    = xlContinuous
+            .Borders(xlEdgeTop).Color        = COL_HEADER
+            .Borders(xlEdgeBottom).LineStyle = xlContinuous
+            .Borders(xlEdgeBottom).Color     = COL_HEADER
+        End With
+
+        ' Ensure the row is tall enough for wrapped text
+        If ws.Rows(rowIdx).RowHeight < 36 Then ws.Rows(rowIdx).RowHeight = 36
+    Next i
+
+    ' Row 5: Navigation hyperlink back to DASHBOARD
+    ws.Range(ws.Cells(5, docCol), ws.Cells(5, endCol)).Merge
+    With ws.Cells(5, docCol)
+        .Value = "<< Back to DASHBOARD"
+        .Font.Bold = True: .Font.Size = 8
+        .Font.Underline = xlUnderlineStyleSingle
+        .Font.Color = RGB(0, 70, 70)
+        .Interior.Color = COL_LGREY
+        .HorizontalAlignment = xlCenter: .VerticalAlignment = xlCenter
+    End With
+    ws.Hyperlinks.Add Anchor:=ws.Cells(5, docCol), Address:="", _
+        SubAddress:="#DASHBOARD!A1", TextToDisplay:="<< Back to DASHBOARD"
+    If ws.Rows(5).RowHeight < 16 Then ws.Rows(5).RowHeight = 16
+
+    ' Column widths for the panel
+    ws.Columns(docCol).ColumnWidth     = 12
+    ws.Columns(docCol + 1).ColumnWidth = 22
+    ws.Columns(docCol + 2).ColumnWidth = 22
+    ws.Columns(docCol + 3).ColumnWidth = 22
+End Sub
 
 Private Sub ReorderSheets(wb As Workbook)
     Dim order() As String
@@ -2008,12 +2255,22 @@ Private Sub BuildDAILY_ENTRY(wb As Workbook)
     ws.Columns("F:F").ColumnWidth = 14
     ws.Columns("G:H").ColumnWidth = 20
 
+    Call AddSheetDoc(ws, 10, _
+        "Structured daily data entry form. " & _
+        "One-stop entry for shift cartons, staff, targets, and audits. " & _
+        "SUBMIT DAY writes to all KPI tables automatically.", _
+        "IN: manual user input  |  " & _
+        "OUT: SUBMIT DAY writes to -> T_DISPATCH_KPI (shift raw data), " & _
+        "-> IN_TARGETS_DAILY (target per person), " & _
+        "-> IN_AUDIT_LOG (audit count), -> HISTORY (snapshot)", _
+        "1. Verify or change Business Date in B4. " & _
+        "2. Enter Cartons Shipped, Total Staff, Target/Person, Audit Count " & _
+        "for Day (row 8) and Night (row 9) shifts. " & _
+        "3. Optionally override exception counts in rows 12-13. " & _
+        "4. Click SUBMIT DAY. " & _
+        "5. Click CLEAR FORM to reset for the next entry.")
     ws.Tab.Color = RGB(0, 176, 240)
 End Sub
-
-'================================================================================
-' FILL DATA PUBLIC MACROS
-'================================================================================
 
 ' Navigate to the DAILY_ENTRY form
 Public Sub NavigateToDailyEntry()
