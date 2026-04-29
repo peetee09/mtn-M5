@@ -2069,15 +2069,15 @@ Public Sub SubmitDailyData()
     entryDate = CDate(entryDateVal)
 
     ' ── Read shift data ────────────────────────────────────────────────────────
-    Dim dayShipped  As Long:   dayShipped  = _DELong(wsDE.Range("B8").Value)
-    Dim dayStaff    As Long:   dayStaff    = _DELong(wsDE.Range("C8").Value)
-    Dim dayTarget   As Double: dayTarget   = _DEDbl(wsDE.Range("D8").Value)
-    Dim dayAudit    As Long:   dayAudit    = _DELong(wsDE.Range("E8").Value)
+    Dim dayShipped  As Long:   dayShipped  = DELong(wsDE.Range("B8").Value)
+    Dim dayStaff    As Long:   dayStaff    = DELong(wsDE.Range("C8").Value)
+    Dim dayTarget   As Double: dayTarget   = DEDbl(wsDE.Range("D8").Value)
+    Dim dayAudit    As Long:   dayAudit    = DELong(wsDE.Range("E8").Value)
 
-    Dim nightShipped As Long:   nightShipped = _DELong(wsDE.Range("B9").Value)
-    Dim nightStaff   As Long:   nightStaff   = _DELong(wsDE.Range("C9").Value)
-    Dim nightTarget  As Double: nightTarget  = _DEDbl(wsDE.Range("D9").Value)
-    Dim nightAudit   As Long:   nightAudit   = _DELong(wsDE.Range("E9").Value)
+    Dim nightShipped As Long:   nightShipped = DELong(wsDE.Range("B9").Value)
+    Dim nightStaff   As Long:   nightStaff   = DELong(wsDE.Range("C9").Value)
+    Dim nightTarget  As Double: nightTarget  = DEDbl(wsDE.Range("D9").Value)
+    Dim nightAudit   As Long:   nightAudit   = DELong(wsDE.Range("E9").Value)
 
     Dim dayHasData   As Boolean: dayHasData   = (dayShipped > 0 Or dayStaff > 0)
     Dim nightHasData As Boolean: nightHasData = (nightShipped > 0 Or nightStaff > 0)
@@ -2112,7 +2112,7 @@ Public Sub SubmitDailyData()
             ThisWorkbook.Worksheets("IN_HRP").ListObjects("tblHRP").ListColumns("IncludeInHRP").DataBodyRange, True)
         On Error GoTo 0
     Else
-        hrpOpen = _DELong(hrpVal)
+        hrpOpen = DELong(hrpVal)
     End If
 
     If IsEmpty(pckVal) Or IsError(pckVal) Or pckVal = "" Then
@@ -2121,7 +2121,7 @@ Public Sub SubmitDailyData()
             ThisWorkbook.Worksheets("IN_PACKED").ListObjects("tblPacked").ListColumns("ActionFlag").DataBodyRange, True)
         On Error GoTo 0
     Else
-        packedOverdue = _DELong(pckVal)
+        packedOverdue = DELong(pckVal)
     End If
 
     ' ── Write data ─────────────────────────────────────────────────────────────
@@ -2136,19 +2136,19 @@ Public Sub SubmitDailyData()
     Dim rowsAdded As Long: rowsAdded = 0
 
     If dayHasData Then
-        Call _UpsertKPIRow(entryDate, "Day", dayShipped, dayStaff)
-        If dayTarget > 0 Then Call _UpsertTargets(entryDate, "Day", dayTarget)
-        Call _UpsertAuditLog(entryDate, "Day", dayAudit)
-        Call _AppendHistory(snapTime, entryDate, "Day", dayShipped, dayStaff, _
+        Call UpsertKPIRow(entryDate, "Day", dayShipped, dayStaff)
+        If dayTarget > 0 Then Call UpsertTargets(entryDate, "Day", dayTarget)
+        Call UpsertAuditLog(entryDate, "Day", dayAudit)
+        Call AppendHistory(snapTime, entryDate, "Day", dayShipped, dayStaff, _
                             dayTarget, dayAudit, hrpOpen, packedOverdue)
         rowsAdded = rowsAdded + 1
     End If
 
     If nightHasData Then
-        Call _UpsertKPIRow(entryDate, "Night", nightShipped, nightStaff)
-        If nightTarget > 0 Then Call _UpsertTargets(entryDate, "Night", nightTarget)
-        Call _UpsertAuditLog(entryDate, "Night", nightAudit)
-        Call _AppendHistory(snapTime, entryDate, "Night", nightShipped, nightStaff, _
+        Call UpsertKPIRow(entryDate, "Night", nightShipped, nightStaff)
+        If nightTarget > 0 Then Call UpsertTargets(entryDate, "Night", nightTarget)
+        Call UpsertAuditLog(entryDate, "Night", nightAudit)
+        Call AppendHistory(snapTime, entryDate, "Night", nightShipped, nightStaff, _
                             nightTarget, nightAudit, hrpOpen, packedOverdue)
         rowsAdded = rowsAdded + 1
     End If
@@ -2175,7 +2175,7 @@ End Sub
 
 ' Upsert a row in T_DISPATCH_KPI for the given date+shift, writing raw values
 ' for ShippedCartons and TotalStaff (the remaining columns stay as formulas).
-Private Sub _UpsertKPIRow(busDate As Date, shiftName As String, _
+Private Sub UpsertKPIRow(busDate As Date, shiftName As String, _
                            shipped As Long, staff As Long)
     Dim ws As Worksheet
     On Error Resume Next: Set ws = ThisWorkbook.Worksheets("T_DISPATCH_KPI"): On Error GoTo 0
@@ -2212,7 +2212,7 @@ Private Sub _UpsertKPIRow(busDate As Date, shiftName As String, _
 End Sub
 
 ' Upsert a row in IN_TARGETS_DAILY for the given date+shift.
-Private Sub _UpsertTargets(busDate As Date, shiftName As String, target As Double)
+Private Sub UpsertTargets(busDate As Date, shiftName As String, target As Double)
     Dim ws As Worksheet
     On Error Resume Next: Set ws = ThisWorkbook.Worksheets("IN_TARGETS_DAILY"): On Error GoTo 0
     If ws Is Nothing Then Exit Sub
@@ -2247,7 +2247,7 @@ Private Sub _UpsertTargets(busDate As Date, shiftName As String, target As Doubl
 End Sub
 
 ' Upsert a row in IN_AUDIT_LOG for the given date+shift.
-Private Sub _UpsertAuditLog(busDate As Date, shiftName As String, auditCnt As Long)
+Private Sub UpsertAuditLog(busDate As Date, shiftName As String, auditCnt As Long)
     Dim ws As Worksheet
     On Error Resume Next: Set ws = ThisWorkbook.Worksheets("IN_AUDIT_LOG"): On Error GoTo 0
     If ws Is Nothing Then Exit Sub
@@ -2286,7 +2286,7 @@ End Sub
 ' self-contained (does not depend on T_DISPATCH_KPI formula results).
 ' RAG thresholds are read from tblConfig_Rules (Amber_Threshold / Green_Threshold)
 ' so HISTORY rows stay consistent when thresholds are changed in CONFIG.
-Private Sub _AppendHistory(snapTime As Date, busDate As Date, shiftName As String, _
+Private Sub AppendHistory(snapTime As Date, busDate As Date, shiftName As String, _
                             shipped As Long, staff As Long, target As Double, _
                             auditCnt As Long, hrpOpen As Long, packedOverdue As Long)
     Dim ws As Worksheet
@@ -2354,23 +2354,23 @@ Private Sub _AppendHistory(snapTime As Date, busDate As Date, shiftName As Strin
 End Sub
 
 ' Safe Variant-to-Long conversion for form input cells.
-Private Function _DELong(v As Variant) As Long
+Private Function DELong(v As Variant) As Long
     If IsEmpty(v) Or IsError(v) Or v = "" Then
-        _DELong = 0
+        DELong = 0
     ElseIf IsNumeric(v) Then
-        _DELong = CLng(v)
+        DELong = CLng(v)
     Else
-        _DELong = 0
+        DELong = 0
     End If
 End Function
 
 ' Safe Variant-to-Double conversion for form input cells.
-Private Function _DEDbl(v As Variant) As Double
+Private Function DEDbl(v As Variant) As Double
     If IsEmpty(v) Or IsError(v) Or v = "" Then
-        _DEDbl = 0
+        DEDbl = 0
     ElseIf IsNumeric(v) Then
-        _DEDbl = CDbl(v)
+        DEDbl = CDbl(v)
     Else
-        _DEDbl = 0
+        DEDbl = 0
     End If
 End Function
