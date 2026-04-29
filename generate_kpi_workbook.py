@@ -1720,7 +1720,7 @@ def _add_sheet_doc(ws, start_col: int, sheet_name: str,
       Row 5 : "<< Back to DASHBOARD" navigation hyperlink
 
     The panel is 4 columns wide (label col + 3 text cols).  Row heights for
-    rows 2-4 are set to at least 36 px so wrapped text is legible.  The
+    rows 2-4 are set to at least 36 points so wrapped text is legible.  The
     column widths are set explicitly so the panel is always readable even
     when neighbouring data columns are narrow.
 
