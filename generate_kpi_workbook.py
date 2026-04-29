@@ -464,51 +464,6 @@ def build_in_staffing(wb: Workbook) -> None:
 
     freeze(ws)
     _autofit(ws)
-
-
-def build_in_targets(wb: Workbook) -> None:
-    ws = wb.create_sheet("IN_TARGETS_DAILY")
-    ws.sheet_properties.tabColor = "00B050"
-
-    cols = ["BusinessDate", "ShiftName", "TargetPerPersonPerShift"]
-    header_style(ws, 1, cols)
-
-    ws.cell(row=2, column=1, value=datetime.date.today())
-    ws.cell(row=2, column=2, value="Day")
-    ws.cell(row=2, column=3, value=50)
-
-    add_table(ws, "A1:C2", "tblTargetsDaily", "TableStyleMedium4")
-    add_shift_validation(ws, "B")
-    freeze(ws)
-    _autofit(ws)
-
-
-def build_in_audit_log(wb: Workbook) -> None:
-    ws = wb.create_sheet("IN_AUDIT_LOG")
-    ws.sheet_properties.tabColor = "70AD47"
-
-    cols = ["BusinessDate", "ShiftName", "Area", "AuditCount", "Notes"]
-    header_style(ws, 1, cols)
-
-    ws.cell(row=2, column=1, value=datetime.date.today())
-    ws.cell(row=2, column=2, value="Day")
-    ws.cell(row=2, column=3, value="Auditing")
-    ws.cell(row=2, column=4, value=0)
-    ws.cell(row=2, column=5, value="")
-
-    add_table(ws, "A1:E2", "tblAuditLog", "TableStyleMedium4")
-    add_shift_validation(ws, "B")
-
-    dv_area = DataValidation(
-        type="list",
-        formula1='"Auditing,Manual handover,Dispatch sealing"',
-        allow_blank=True, showDropDown=False
-    )
-    dv_area.sqref = "C2:C10000"
-    ws.add_data_validation(dv_area)
-
-    freeze(ws)
-    _autofit(ws)
     _add_sheet_doc(
         ws, start_col=6, sheet_name="IN_STAFFING",
         purpose=(
