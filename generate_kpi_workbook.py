@@ -189,6 +189,28 @@ def build_config(wb: Workbook) -> None:
     add_table(ws, "E4:E7", "tblConfig_Areas", "TableStyleMedium2")
 
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=8, sheet_name="CONFIG",
+        purpose=(
+            "Global rules and lookup lists for the entire workbook. "
+            "KPI thresholds, shift schedules, and area names are all defined here "
+            "and referenced by IN_HRP, IN_PACKED, and T_DISPATCH_KPI formulas."
+        ),
+        data_flow=(
+            "IN: manual setup by the system administrator  |  "
+            "OUT: \u2192 IN_HRP reads HRP_MaxDaysToShow (IncludeInHRP formula); "
+            "\u2192 IN_PACKED reads Packed_MaxAgeDays (PackedStatus/ActionFlag); "
+            "\u2192 T_DISPATCH_KPI reads Amber_Threshold, Green_Threshold (RAG), "
+            "Audit_SampleSize (AuditTarget); "
+            "\u2192 IN_STAFFING and IN_AUDIT_LOG use the Area List for validation"
+        ),
+        how_to_use=(
+            "Edit B11:B15 to change KPI thresholds. "
+            "Edit E5:E7 to add or rename work areas "
+            "(update IN_STAFFING and IN_AUDIT_LOG dropdowns to match). "
+            "Do not rename or delete this sheet — every other sheet depends on it."
+        ),
+    )
 
 
 def build_in_packed(wb: Workbook) -> None:
@@ -218,12 +240,23 @@ def build_in_packed(wb: Workbook) -> None:
         ws.cell(row=2, column=c_off, value=val)
 
     # Calculated columns (stored as formulas in row 2; table will propagate)
+    # PackedStatus and ActionFlag reference CONFIG so that changing
+    # Packed_MaxAgeDays in CONFIG automatically changes the overdue threshold
+    # everywhere — linking the CONFIG sheet to this data sheet.
     calc_start = n_src + 1   # column 15
     ws.cell(row=2, column=calc_start).value     = "=TODAY()-INT([@LAST_PACKED])"
     ws.cell(row=2, column=calc_start + 1).value = "=COUNTIF(tblShipped[LPN],[@LPN])>0"
-    ws.cell(row=2, column=calc_start + 2).value = \
-        '=IF([@IsShipped],"Shipped",IF([@AgeDays]>2,"Overdue","Pending"))'
-    ws.cell(row=2, column=calc_start + 3).value = "=AND(NOT([@IsShipped]),[@AgeDays]>2)"
+    ws.cell(row=2, column=calc_start + 2).value = (
+        '=IF([@IsShipped],"Shipped",'
+        'IF([@AgeDays]>IFERROR(INDEX(tblConfig_Rules[Value],'
+        'MATCH("Packed_MaxAgeDays",tblConfig_Rules[RuleName],0)),2),'
+        '"Overdue","Pending"))'
+    )
+    ws.cell(row=2, column=calc_start + 3).value = (
+        '=AND(NOT([@IsShipped]),'
+        '[@AgeDays]>IFERROR(INDEX(tblConfig_Rules[Value],'
+        'MATCH("Packed_MaxAgeDays",tblConfig_Rules[RuleName],0)),2))'
+    )
 
     last_col = col_letter(len(all_cols))
     add_table(ws, f"A1:{last_col}2", "tblPacked", "TableStyleMedium6")
@@ -248,6 +281,27 @@ def build_in_packed(wb: Workbook) -> None:
 
     freeze(ws)
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=20, sheet_name="IN_PACKED",
+        purpose=(
+            "WMS feed: packed LPN inventory awaiting shipment. "
+            "Overdue items are flagged using the Packed_MaxAgeDays threshold set in CONFIG."
+        ),
+        data_flow=(
+            "IN: WMS packed report (paste daily into cols A\u2013N)  |  "
+            "OUT: \u2192 IN_SHIPPED_LPNS cross-checks IsShipped; "
+            "\u2192 T_DISPATCH_KPI counts PackedOverdue; "
+            "\u2192 ACTION_PACKED (via POPULATE ACTION SHEETS); "
+            "\u2192 DATA_QUALITY"
+        ),
+        how_to_use=(
+            "1. Paste latest WMS packed LPN export into cols A\u2013N daily. "
+            "2. Columns O\u2013R (AgeDays, IsShipped, PackedStatus, ActionFlag) "
+            "recalculate automatically. "
+            "3. Rows where ActionFlag=TRUE appear in ACTION_PACKED after "
+            "clicking POPULATE ACTION SHEETS on DASHBOARD."
+        ),
+    )
 
 
 def build_in_hrp(wb: Workbook) -> None:
@@ -277,8 +331,14 @@ def build_in_hrp(wb: Workbook) -> None:
     calc_start = len(src_cols) + 1
     ws.cell(row=2, column=calc_start).value     = '=IF([@OLPN]<>"",[@OLPN],[@XREF_OLPN])'
     ws.cell(row=2, column=calc_start + 1).value = '=[@STORE_ACK_STATUS]="Y"'
-    ws.cell(row=2, column=calc_start + 2).value = \
-        '=AND([@STORE_ACK_STATUS]="N",[@DAYS_SINCE_AVAILABLE_FOR_CITY]<=1)'
+    # IncludeInHRP references CONFIG so changing HRP_MaxDaysToShow in CONFIG
+    # automatically changes the inclusion threshold here — linking CONFIG to
+    # this data sheet.
+    ws.cell(row=2, column=calc_start + 2).value = (
+        '=AND([@STORE_ACK_STATUS]="N",'
+        '[@DAYS_SINCE_AVAILABLE_FOR_CITY]<=IFERROR(INDEX(tblConfig_Rules[Value],'
+        'MATCH("HRP_MaxDaysToShow",tblConfig_Rules[RuleName],0)),1))'
+    )
     ws.cell(row=2, column=calc_start + 3).value = \
         '=IF([@DAYS_SINCE_AVAILABLE_FOR_CITY]=0,"<24h","24h+")'
 
@@ -307,6 +367,28 @@ def build_in_hrp(wb: Workbook) -> None:
 
     freeze(ws)
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=19, sheet_name="IN_HRP",
+        purpose=(
+            "Hold-for-Release Parcels awaiting city store acknowledgement. "
+            "IncludeInHRP flags unacknowledged items within the HRP_MaxDaysToShow "
+            "threshold set in CONFIG."
+        ),
+        data_flow=(
+            "IN: WMS HRP extract (paste daily into cols A\u2013M)  |  "
+            "OUT: \u2192 T_DISPATCH_KPI counts HRPOpen; "
+            "\u2192 ACTION_HRP (via POPULATE ACTION SHEETS); "
+            "\u2192 DATA_QUALITY"
+        ),
+        how_to_use=(
+            "1. Paste latest WMS HRP report into cols A\u2013M daily. "
+            "2. Set STORE_ACK_STATUS=Y when the city store has acknowledged the carton. "
+            "3. Cols N\u2013Q (CartonID, IsAcknowledged, IncludeInHRP, AgeBucket) "
+            "recalculate automatically. "
+            "4. IncludeInHRP=TRUE rows appear in ACTION_HRP after clicking "
+            "POPULATE ACTION SHEETS on DASHBOARD."
+        ),
+    )
 
 
 def build_in_shipped(wb: Workbook) -> None:
@@ -336,6 +418,24 @@ def build_in_shipped(wb: Workbook) -> None:
     add_shift_validation(ws, "B")
     freeze(ws)
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=8, sheet_name="IN_SHIPPED_LPNS",
+        purpose=(
+            "Log of all LPNs physically shipped each shift. "
+            "This is the primary source for the ShippedCartons KPI."
+        ),
+        data_flow=(
+            "IN: manual entry per shift  |  "
+            "OUT: \u2192 IN_PACKED calculates IsShipped (COUNTIF); "
+            "\u2192 T_DISPATCH_KPI counts ShippedCartons (COUNTIFS by date+shift); "
+            "\u2192 DATA_QUALITY (duplicate check)"
+        ),
+        how_to_use=(
+            "Add one row per shipped LPN after each shift. "
+            "Enter BusinessDate, ShiftName (Day or Night), LPN, and EnteredBy. "
+            "DupFlag auto-highlights duplicate LPN entries for the same date and shift."
+        ),
+    )
 
 
 def build_in_staffing(wb: Workbook) -> None:
@@ -401,6 +501,84 @@ def build_in_audit_log(wb: Workbook) -> None:
 
     dv_area = DataValidation(
         type="list",
+        formula1='"Auditing,Manual handover,Dispatch sealing"',
+        allow_blank=True, showDropDown=False
+    )
+    dv_area.sqref = "C2:C10000"
+    ws.add_data_validation(dv_area)
+
+    freeze(ws)
+    _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=6, sheet_name="IN_STAFFING",
+        purpose=(
+            "Headcount available per shift and work area. "
+            "TotalStaff is summed by date+shift in T_DISPATCH_KPI to calculate ExpectedCartons."
+        ),
+        data_flow=(
+            "IN: manual entry per shift  |  "
+            "OUT: \u2192 T_DISPATCH_KPI (TotalStaff column via SUMIFS)"
+        ),
+        how_to_use=(
+            "Enter one row per shift per work area each day. "
+            "ShiftName must be Day or Night. "
+            "Area must match an entry in the CONFIG Area List (E5:E7). "
+            "StaffAvailable = number of pickers/dispatchers on that shift."
+        ),
+    )
+
+
+def build_in_targets(wb: Workbook) -> None:
+    ws = wb.create_sheet("IN_TARGETS_DAILY")
+    ws.sheet_properties.tabColor = "00B050"
+
+    cols = ["BusinessDate", "ShiftName", "TargetPerPersonPerShift"]
+    header_style(ws, 1, cols)
+
+    ws.cell(row=2, column=1, value=datetime.date.today())
+    ws.cell(row=2, column=2, value="Day")
+    ws.cell(row=2, column=3, value=50)
+
+    add_table(ws, "A1:C2", "tblTargetsDaily", "TableStyleMedium4")
+    add_shift_validation(ws, "B")
+    freeze(ws)
+    _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=5, sheet_name="IN_TARGETS_DAILY",
+        purpose=(
+            "Daily carton target per person per shift. "
+            "Combined with TotalStaff to calculate ExpectedCartons in T_DISPATCH_KPI."
+        ),
+        data_flow=(
+            "IN: manual entry before each shift  |  "
+            "OUT: \u2192 T_DISPATCH_KPI (TargetPerPerson \u2192 ExpectedCartons via SUMIFS)"
+        ),
+        how_to_use=(
+            "Enter one row per shift per business date. "
+            "TargetPerPersonPerShift = the number of cartons one person is expected to ship "
+            "in that shift. Can be set once per week if the target does not change daily."
+        ),
+    )
+
+
+def build_in_audit_log(wb: Workbook) -> None:
+    ws = wb.create_sheet("IN_AUDIT_LOG")
+    ws.sheet_properties.tabColor = "70AD47"
+
+    cols = ["BusinessDate", "ShiftName", "Area", "AuditCount", "Notes"]
+    header_style(ws, 1, cols)
+
+    ws.cell(row=2, column=1, value=datetime.date.today())
+    ws.cell(row=2, column=2, value="Day")
+    ws.cell(row=2, column=3, value="Auditing")
+    ws.cell(row=2, column=4, value=0)
+    ws.cell(row=2, column=5, value="")
+
+    add_table(ws, "A1:E2", "tblAuditLog", "TableStyleMedium4")
+    add_shift_validation(ws, "B")
+
+    dv_area = DataValidation(
+        type="list",
         # Cross-sheet structured references for data validation are the unreliable
         # form here. The stable explicit reference is an absolute range such as
         # =CONFIG!$E$5:$E$7 (used by the VBA implementation), but this openpyxl
@@ -414,6 +592,25 @@ def build_in_audit_log(wb: Workbook) -> None:
 
     freeze(ws)
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=7, sheet_name="IN_AUDIT_LOG",
+        purpose=(
+            "Quality audit counts per shift and work area. "
+            "AuditPct in T_DISPATCH_KPI compares AuditCount against the "
+            "Audit_SampleSize threshold set in CONFIG."
+        ),
+        data_flow=(
+            "IN: manual entry after each shift  |  "
+            "OUT: \u2192 T_DISPATCH_KPI (AuditCount, AuditPct via SUMIFS); "
+            "\u2192 DASHBOARD AUDIT OVERVIEW section"
+        ),
+        how_to_use=(
+            "Enter one row per shift per area after completing audits. "
+            "AuditCount = number of audits completed in that shift/area. "
+            "Compare to Audit_SampleSize in CONFIG (default 20). "
+            "Area must match CONFIG Area List."
+        ),
+    )
 
 
 def build_t_dispatch_kpi(wb: Workbook) -> None:
@@ -433,15 +630,25 @@ def build_t_dispatch_kpi(wb: Workbook) -> None:
         "=COUNTIFS(tblShipped[BusinessDate],[@BusinessDate],tblShipped[ShiftName],[@ShiftName])"
     ws.cell(row=2, column=4).value = \
         "=SUMIFS(tblStaffing[StaffAvailable],tblStaffing[BusinessDate],[@BusinessDate],tblStaffing[ShiftName],[@ShiftName])"
-    # Array formula (INDEX/MATCH across two criteria)
-    ws.cell(row=2, column=5).value = \
-        ("=IFERROR(INDEX(tblTargetsDaily[TargetPerPersonPerShift],"
-         "MATCH(1,(tblTargetsDaily[BusinessDate]=[@BusinessDate])"
-         "*(tblTargetsDaily[ShiftName]=[@ShiftName]),0)),0)")
+    # SUMIFS replaces the multi-criteria INDEX/MATCH array formula used in the
+    # original design.  SUMIFS is Excel 2016-compatible and does not require
+    # Ctrl+Shift+Enter — making it consistent with the VBA implementation and
+    # reliable without the FormulaArray attribute.
+    ws.cell(row=2, column=5).value = (
+        "=IFERROR(SUMIFS(tblTargetsDaily[TargetPerPersonPerShift],"
+        "tblTargetsDaily[BusinessDate],[@BusinessDate],"
+        "tblTargetsDaily[ShiftName],[@ShiftName]),0)"
+    )
     ws.cell(row=2, column=6).value = "=[@TotalStaff]*[@TargetPerPerson]"
     ws.cell(row=2, column=7).value = "=IFERROR([@ShippedCartons]/[@ExpectedCartons],0)"
-    ws.cell(row=2, column=8).value = \
-        '=IF([@PerformancePct]>=1,"Green",IF([@PerformancePct]>=0.9,"Amber","Red"))'
+    # RAG references CONFIG thresholds so changing Green_Threshold or
+    # Amber_Threshold in CONFIG automatically updates the RAG logic here.
+    ws.cell(row=2, column=8).value = (
+        '=IF([@PerformancePct]>=IFERROR(INDEX(tblConfig_Rules[Value],'
+        'MATCH("Green_Threshold",tblConfig_Rules[RuleName],0)),1),"Green",'
+        'IF([@PerformancePct]>=IFERROR(INDEX(tblConfig_Rules[Value],'
+        'MATCH("Amber_Threshold",tblConfig_Rules[RuleName],0)),0.9),"Amber","Red"))'
+    )
     # Audit metrics
     ws.cell(row=2, column=9).value = \
         "=SUMIFS(tblAuditLog[AuditCount],tblAuditLog[BusinessDate],[@BusinessDate],tblAuditLog[ShiftName],[@ShiftName])"
@@ -477,6 +684,31 @@ def build_t_dispatch_kpi(wb: Workbook) -> None:
 
     freeze(ws)
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=15, sheet_name="T_DISPATCH_KPI",
+        purpose=(
+            "Auto-calculated per-shift KPI summary table. "
+            "All formula columns recalculate automatically — do not enter data here directly. "
+            "RAG uses CONFIG Green_Threshold and Amber_Threshold; "
+            "TargetPerPerson reads IN_TARGETS_DAILY."
+        ),
+        data_flow=(
+            "IN: formulas read from IN_SHIPPED_LPNS (ShippedCartons), "
+            "IN_STAFFING (TotalStaff), IN_TARGETS_DAILY (TargetPerPerson), "
+            "IN_AUDIT_LOG (AuditCount), IN_HRP (HRPOpen), IN_PACKED (PackedOverdue), "
+            "CONFIG (thresholds)  |  "
+            "OUT: \u2192 T_DISPATCH_DAILY (daily aggregates); "
+            "\u2192 DASHBOARD (KPI cards); "
+            "\u2192 HISTORY (via TAKE DAILY SNAPSHOT)"
+        ),
+        how_to_use=(
+            "Rows are created automatically by DAILY_ENTRY (SUBMIT DAY button) "
+            "or by manually typing a BusinessDate and ShiftName — all other columns "
+            "calculate automatically. "
+            "Do not overwrite formula cells. "
+            "Click TAKE DAILY SNAPSHOT on DASHBOARD to archive the current values to HISTORY."
+        ),
+    )
 
 
 def build_t_dispatch_daily(wb: Workbook) -> None:
@@ -500,6 +732,23 @@ def build_t_dispatch_daily(wb: Workbook) -> None:
 
     freeze(ws)
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=7, sheet_name="T_DISPATCH_DAILY",
+        purpose=(
+            "Daily aggregate KPIs — sums Day and Night shift data into one row per date. "
+            "Used by the DASHBOARD weekly/monthly summaries and CHARTS trend lines."
+        ),
+        data_flow=(
+            "IN: formulas read from T_DISPATCH_KPI (summed by BusinessDate via SUMIF)  |  "
+            "OUT: \u2192 DASHBOARD (Today / Weekly / Monthly KPI cards); "
+            "\u2192 CHARTS (daily trend charts)"
+        ),
+        how_to_use=(
+            "Fully automatic. Rows here update the moment T_DISPATCH_KPI rows are added. "
+            "Do not enter data directly. "
+            "One row per unique BusinessDate appears automatically."
+        ),
+    )
 
 
 def build_action_hrp(wb: Workbook) -> None:
@@ -562,6 +811,77 @@ def build_action_packed(wb: Workbook) -> None:
 
     freeze(ws)
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=14, sheet_name="ACTION_HRP",
+        purpose=(
+            "Working action list for HRP items where IncludeInHRP = TRUE. "
+            "Used by the dispatch team to track follow-up with city stores."
+        ),
+        data_flow=(
+            "IN: populated from IN_HRP (rows where IncludeInHRP=TRUE) "
+            "via POPULATE ACTION SHEETS button on DASHBOARD  |  "
+            "OUT: manual action tracking only — no formulas read from this sheet"
+        ),
+        how_to_use=(
+            "1. Click POPULATE ACTION SHEETS on DASHBOARD to refresh. "
+            "2. Fill in Owner (who is following up), ContactedCity (Y/N dropdown), "
+            "ContactTime, and NextStep for each item. "
+            "3. Click POPULATE ACTION SHEETS again next day to refresh with latest data."
+        ),
+    )
+
+
+def build_action_packed(wb: Workbook) -> None:
+    ws = wb.create_sheet("ACTION_PACKED")
+    ws.sheet_properties.tabColor = "C00000"
+
+    cols = [
+        "LPN", "STORE", "DIVISION", "AgeDays",
+        "PackedStatus", "UNITS",
+        "HoldReason", "Owner", "PlannedShipTime"
+    ]
+    for c_idx, name in enumerate(cols, start=1):
+        cell = ws.cell(row=1, column=c_idx, value=name)
+        cell.font = bold_font(WHITE_HEX)
+        cell.fill = fill("FFC00000")
+        cell.alignment = Alignment(horizontal="center")
+
+    ws.cell(row=2, column=1, value="-- Populate via 'POPULATE ACTION SHEETS' button on DASHBOARD --")
+    ws.cell(row=2, column=1).font = Font(italic=True, color="808080")
+
+    # CF on PackedStatus column (col E)
+    ws.conditional_formatting.add(
+        "E2:E10000",
+        Rule(type="containsText", operator="containsText", text="Overdue",
+             dxf=DifferentialStyle(fill=fill(RED_HEX), font=Font(color=_hex_font_color(WHITE_HEX))))
+    )
+    ws.conditional_formatting.add(
+        "E2:E10000",
+        Rule(type="containsText", operator="containsText", text="Pending",
+             dxf=DifferentialStyle(fill=fill(AMBER_HEX)))
+    )
+
+    freeze(ws)
+    _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=11, sheet_name="ACTION_PACKED",
+        purpose=(
+            "Working action list for overdue packed items (ActionFlag=TRUE), "
+            "sorted by AgeDays descending (oldest first). "
+            "The overdue threshold is Packed_MaxAgeDays in CONFIG."
+        ),
+        data_flow=(
+            "IN: populated from IN_PACKED (rows where ActionFlag=TRUE) "
+            "via POPULATE ACTION SHEETS button on DASHBOARD  |  "
+            "OUT: manual action tracking only — no formulas read from this sheet"
+        ),
+        how_to_use=(
+            "1. Click POPULATE ACTION SHEETS on DASHBOARD to refresh. "
+            "2. Fill in HoldReason, Owner, and PlannedShipTime for each overdue LPN. "
+            "3. Once shipped, re-paste IN_PACKED data and click POPULATE again — "
+            "shipped items will no longer appear."
+        ),
+    )
 
 
 def build_history(wb: Workbook) -> None:
@@ -580,6 +900,24 @@ def build_history(wb: Workbook) -> None:
         ws.cell(row=2, column=c_idx, value="")
     add_table(ws, f"A1:{col_letter(len(cols))}2", "tblHistory", "TableStyleMedium2")
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=13, sheet_name="HISTORY",
+        purpose=(
+            "Immutable time-series log of KPI snapshots. "
+            "Each row is a point-in-time record of one shift's KPIs. "
+            "Used for trend analysis, auditing, and the CHARTS sheet."
+        ),
+        data_flow=(
+            "IN: populated from T_DISPATCH_KPI via TAKE DAILY SNAPSHOT button "
+            "on DASHBOARD (one row per shift per snapshot)  |  "
+            "OUT: \u2192 CHARTS (historical trend charts)"
+        ),
+        how_to_use=(
+            "Click TAKE DAILY SNAPSHOT on DASHBOARD at the end of each shift or day. "
+            "Do not delete rows — this is the audit trail. "
+            "Filter by BusinessDate or ShiftName to analyse specific periods."
+        ),
+    )
 
 
 def build_data_quality(wb: Workbook) -> None:
@@ -636,6 +974,24 @@ def build_data_quality(wb: Workbook) -> None:
         )
 
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=6, sheet_name="DATA_QUALITY",
+        purpose=(
+            "Automated validation checks across all input sheets. "
+            "Each row runs a live formula and shows OK (green) or WARNING (amber). "
+            "Review this sheet after each data paste to catch issues early."
+        ),
+        data_flow=(
+            "IN: live formulas read from tblHRP, tblPacked, tblShipped, tblStaffing  |  "
+            "OUT: read-only validation — no other sheet reads from DATA_QUALITY"
+        ),
+        how_to_use=(
+            "Review daily after updating input sheets. "
+            "Any WARNING (amber) indicates a data issue in the referenced input sheet. "
+            "Fix the issue in the source sheet, then recalculate (F9 or REFRESH ALL) "
+            "to confirm it clears."
+        ),
+    )
 
 
 def build_daily_entry(wb: Workbook) -> None:
@@ -857,6 +1213,30 @@ def build_daily_entry(wb: Workbook) -> None:
     ws.column_dimensions["G"].width = 20
     ws.column_dimensions["H"].width = 20
 
+    _add_sheet_doc(
+        ws, start_col=10, sheet_name="DAILY_ENTRY",
+        purpose=(
+            "Structured daily data entry form. "
+            "One-stop entry for shift cartons, staff, targets, and audits. "
+            "SUBMIT DAY writes to all KPI tables automatically."
+        ),
+        data_flow=(
+            "IN: manual user input  |  "
+            "OUT: SUBMIT DAY writes to \u2192 T_DISPATCH_KPI (shift raw data), "
+            "\u2192 IN_TARGETS_DAILY (target per person), "
+            "\u2192 IN_AUDIT_LOG (audit count), "
+            "\u2192 HISTORY (snapshot)"
+        ),
+        how_to_use=(
+            "1. Verify or change Business Date in B4. "
+            "2. Enter Cartons Shipped, Total Staff, Target/Person, Audit Count "
+            "for Day (row 8) and Night (row 9) shifts. "
+            "3. Optionally override exception counts in rows 12-13. "
+            "4. Click SUBMIT DAY. "
+            "5. Click CLEAR FORM to reset for the next entry."
+        ),
+    )
+
 
 def build_charts(wb: Workbook) -> None:
     """Dedicated CHARTS sheet with 5 pre-built charts that update as data is added."""
@@ -989,6 +1369,25 @@ def build_charts(wb: Workbook) -> None:
     # Column A is narrow enough not to interfere with chart placement
     ws.column_dimensions["A"].width = 3
     _autofit(ws)
+    _add_sheet_doc(
+        ws, start_col=15, sheet_name="CHARTS",
+        purpose=(
+            "Auto-updating performance charts for trend analysis and reporting. "
+            "All 5 charts refresh automatically as data is added to the input sheets."
+        ),
+        data_flow=(
+            "IN: T_DISPATCH_DAILY (daily trend / staff), "
+            "T_DISPATCH_KPI (per-shift cartons / audit %), "
+            "HISTORY (HRP and packed overdue historical trend)  |  "
+            "OUT: read-only visualisation — no other sheet reads from CHARTS"
+        ),
+        how_to_use=(
+            "Charts update automatically — no manual action needed. "
+            "Click TAKE DAILY SNAPSHOT on DASHBOARD to add data points to the "
+            "HRP and Packed Overdue historical trend chart (Chart 3). "
+            "Use browser print view or Excel's Chart Sheet option for reporting."
+        ),
+    )
 
 
 def build_dashboard(wb: Workbook) -> None:  # noqa: C901
@@ -1314,6 +1713,28 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
     for ci in range(2, 15):
         ws.column_dimensions[col_letter(ci)].width = 15
 
+    # Add the sheet guide doc block to the right of DASHBOARD (cols A-N used)
+    _add_sheet_doc(
+        ws, start_col=16, sheet_name="DASHBOARD",
+        purpose=(
+            "Central KPI hub showing real-time performance across HRP, packed, "
+            "dispatch, audits, and staffing. All KPI cards update live as input "
+            "sheets are populated."
+        ),
+        data_flow=(
+            "IN: formulas read from tblDispatchKPI, tblDispatchDaily, "
+            "tblHRP, tblPacked, tblShipped, tblAuditLog, tblConfig_Rules  |  "
+            "OUT: QUICK NAVIGATION hyperlinks to all other sheets; "
+            "VBA buttons trigger macros (REFRESH ALL, SNAPSHOT, POPULATE, FILL DATA)"
+        ),
+        how_to_use=(
+            "Use QUICK NAVIGATION links (rows 31-32) to jump to any sheet. "
+            "Click FILL DATA / SUBMIT DAY to enter daily shift data. "
+            "Click TAKE DAILY SNAPSHOT to archive today's KPIs to HISTORY. "
+            "Click POPULATE ACTION SHEETS to refresh ACTION_HRP and ACTION_PACKED."
+        ),
+    )
+
 
 # ---------------------------------------------------------------------------
 # Dashboard helper functions
@@ -1397,6 +1818,114 @@ def _autofit(ws) -> None:
             except Exception:
                 pass
         ws.column_dimensions[col_letter_str].width = min(max(max_len + 2, 10), 40)
+
+
+def _add_sheet_doc(ws, start_col: int, sheet_name: str,
+                   purpose: str, data_flow: str, how_to_use: str) -> None:
+    """Add a 5-row documentation panel to the right of a sheet's data area.
+
+    Each sheet in the workbook has a visible guide box so operators know
+    immediately what the sheet does, what feeds into and out of it, and
+    how to use it.
+
+    Layout (rows 1-5, columns start_col to start_col+3):
+      Row 1 : Banner header  "[i] SHEET GUIDE — <sheet_name>"
+      Row 2 : PURPOSE   label  |  purpose text
+      Row 3 : DATA FLOW label  |  data flow text
+      Row 4 : HOW TO USE label |  how-to-use text
+      Row 5 : "<< Back to DASHBOARD" navigation hyperlink
+
+    The panel is 4 columns wide (label col + 3 text cols).  Row heights for
+    rows 2-4 are set to at least 36 px so wrapped text is legible.  The
+    column widths are set explicitly so the panel is always readable even
+    when neighbouring data columns are narrow.
+
+    Parameters
+    ----------
+    ws          : openpyxl Worksheet to decorate.
+    start_col   : 1-based column index where the panel starts (should be
+                  at least 2 columns past the last table column so there
+                  is a visual gap).
+    sheet_name  : sheet name shown in the banner.
+    purpose     : one or two sentences describing what the sheet is for.
+    data_flow   : "IN: <sources>  |  OUT: <consumers>" summary.
+    how_to_use  : brief step-by-step or key actions for the operator.
+    """
+    DOC_W   = 4                     # panel is 4 columns wide
+    end_col = start_col + DOC_W - 1
+
+    # ── Row 1 : Banner ────────────────────────────────────────────────────────
+    ws.merge_cells(
+        start_row=1, start_column=start_col,
+        end_row=1,   end_column=end_col
+    )
+    h = ws.cell(row=1, column=start_col,
+                value=f"[i] SHEET GUIDE \u2014 {sheet_name}")
+    h.font      = Font(bold=True, size=9, color=_hex_font_color(WHITE_HEX))
+    h.fill      = fill(HEADER_HEX)
+    h.alignment = Alignment(horizontal="left", vertical="center", indent=1)
+    rh = ws.row_dimensions[1].height
+    ws.row_dimensions[1].height = max(rh if rh else 15, 18)
+
+    # ── Rows 2-4 : Label + Text pairs ─────────────────────────────────────────
+    _LABEL_FILL = "FFD6E4F7"   # light blue
+    _TEXT_FILL  = "FFEFF7FF"   # very light blue
+    _BORDER_CLR = HEADER_HEX[2:]
+
+    for row, (label, text) in enumerate(
+        [
+            ("PURPOSE:",    purpose),
+            ("DATA FLOW:",  data_flow),
+            ("HOW TO USE:", how_to_use),
+        ],
+        start=2,
+    ):
+        lbl = ws.cell(row=row, column=start_col, value=label)
+        lbl.font      = Font(bold=True, size=8, color=_hex_font_color(HEADER_HEX))
+        lbl.fill      = fill(_LABEL_FILL)
+        lbl.alignment = Alignment(horizontal="left", vertical="top", indent=1)
+        lbl.border    = Border(
+            left=Side(style="thin",   color=_BORDER_CLR),
+            top=Side(style="thin",    color=_BORDER_CLR),
+            bottom=Side(style="thin", color=_BORDER_CLR),
+        )
+
+        ws.merge_cells(
+            start_row=row, start_column=start_col + 1,
+            end_row=row,   end_column=end_col
+        )
+        txt = ws.cell(row=row, column=start_col + 1, value=text)
+        txt.font      = Font(size=8, color=_hex_font_color(TEXT_DK_HEX))
+        txt.fill      = fill(_TEXT_FILL)
+        txt.alignment = Alignment(vertical="top", wrap_text=True,
+                                  horizontal="left", indent=1)
+        txt.border    = Border(
+            right=Side(style="thin",  color=_BORDER_CLR),
+            top=Side(style="thin",    color=_BORDER_CLR),
+            bottom=Side(style="thin", color=_BORDER_CLR),
+        )
+        # Ensure rows 2-4 are tall enough for at least two lines of text
+        rh = ws.row_dimensions[row].height
+        ws.row_dimensions[row].height = max(rh if rh else 15, 36)
+
+    # ── Row 5 : Navigation hyperlink ──────────────────────────────────────────
+    ws.merge_cells(
+        start_row=5, start_column=start_col,
+        end_row=5,   end_column=end_col
+    )
+    nav = ws.cell(row=5, column=start_col, value="<< Back to DASHBOARD")
+    nav.hyperlink = "#DASHBOARD!A1"
+    nav.font      = Font(bold=True, size=8, underline="single", color="FF004646")
+    nav.fill      = fill(LGREY_HEX)
+    nav.alignment = Alignment(horizontal="center", vertical="center")
+    rh = ws.row_dimensions[5].height
+    ws.row_dimensions[5].height = max(rh if rh else 15, 16)
+
+    # ── Column widths ─────────────────────────────────────────────────────────
+    ws.column_dimensions[col_letter(start_col)].width     = 12  # label col
+    ws.column_dimensions[col_letter(start_col + 1)].width = 22  # text cols
+    ws.column_dimensions[col_letter(start_col + 2)].width = 22
+    ws.column_dimensions[col_letter(start_col + 3)].width = 22
 
 
 # ---------------------------------------------------------------------------
