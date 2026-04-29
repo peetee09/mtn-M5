@@ -1239,14 +1239,17 @@ Private Sub BuildDASHBOARD(wb As Workbook)
 
     ' Rows 42-45: Weekly KPI cards
     ' WEEKDAY(TODAY(),2) returns 1=Mon … 7=Sun, so TODAY()-WEEKDAY(TODAY(),2)+1 = this Monday
+    ' Use tblDispatchDaily here because tblHistory is append-only and can contain
+    ' multiple snapshots for the same BusinessDate/Shift, which would double-count
+    ' weekly summary rollups.
     Call MakeKPICard(ws, 42, 2, "CARTONS THIS WEEK", _
-        "=SUMIFS(tblHistory[ShippedCartons],tblHistory[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],""<=""&TODAY())", _
+        "=SUMIFS(tblDispatchDaily[ShippedCartons],tblDispatchDaily[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],""<=""&TODAY())", _
         RGB(70, 130, 180))
     Call MakeKPICard(ws, 42, 6, "AVG PERF % (WEEK)", _
-        "=IFERROR(TEXT(AVERAGEIFS(tblHistory[PerformancePct],tblHistory[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],""<=""&TODAY()),""0.0%""),""N/A"")", _
+        "=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[PerformancePct],tblDispatchDaily[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],""<=""&TODAY()),""0.0%""),""N/A"")", _
         RGB(70, 130, 180))
     Call MakeKPICard(ws, 42, 10, "STAFF COUNT THIS WEEK", _
-        "=SUMIFS(tblHistory[TotalStaff],tblHistory[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],""<=""&TODAY())", _
+        "=SUMIFS(tblDispatchDaily[TotalStaff],tblDispatchDaily[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],""<=""&TODAY())", _
         RGB(70, 130, 180))
 
     ' Row 46: spacer
