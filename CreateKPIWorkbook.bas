@@ -1241,6 +1241,9 @@ Private Sub BuildDASHBOARD(wb As Workbook)
     ' Use tblDispatchDaily (one row per BusinessDate) so repeated snapshots in
     ' tblHistory do not double-count weekly totals or skew the average.
     ' WEEKDAY(TODAY(),2) returns 1=Mon … 7=Sun, so TODAY()-WEEKDAY(TODAY(),2)+1 = this Monday
+    ' Use tblDispatchDaily here because tblHistory is append-only and can contain
+    ' multiple snapshots for the same BusinessDate/Shift, which would double-count
+    ' weekly summary rollups.
     Call MakeKPICard(ws, 42, 2, "CARTONS THIS WEEK", _
         "=SUMIFS(tblDispatchDaily[TotalShipped],tblDispatchDaily[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],""<=""&TODAY())", _
         RGB(70, 130, 180))
