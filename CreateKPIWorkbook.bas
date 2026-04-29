@@ -1258,13 +1258,13 @@ Private Sub BuildDASHBOARD(wb As Workbook)
 
     ' Rows 48-51: Monthly KPI cards
     Call MakeKPICard(ws, 48, 2, "CARTONS THIS MONTH", _
-        "=SUMIFS(tblHistory[ShippedCartons],tblHistory[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],""<=""&TODAY())", _
+        "=SUMIFS(tblDispatchDaily[ShippedCartons],tblDispatchDaily[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],""<=""&TODAY())", _
         RGB(112, 48, 160))
     Call MakeKPICard(ws, 48, 6, "AVG PERF % (MONTH)", _
-        "=IFERROR(TEXT(AVERAGEIFS(tblHistory[PerformancePct],tblHistory[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],""<=""&TODAY()),""0.0%""),""N/A"")", _
+        "=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[PerformancePct],tblDispatchDaily[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],""<=""&TODAY()),""0.0%""),""N/A"")", _
         RGB(112, 48, 160))
     Call MakeKPICard(ws, 48, 10, "STAFF COUNT THIS MONTH", _
-        "=SUMIFS(tblHistory[TotalStaff],tblHistory[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],""<=""&TODAY())", _
+        "=SUMIFS(tblDispatchDaily[TotalStaff],tblDispatchDaily[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],""<=""&TODAY())", _
         RGB(112, 48, 160))
 
     ' Row 52: spacer
