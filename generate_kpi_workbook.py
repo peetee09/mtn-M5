@@ -768,59 +768,6 @@ def build_action_packed(wb: Workbook) -> None:
     _autofit(ws)
 
 
-def build_action_packed(wb: Workbook) -> None:
-    ws = wb.create_sheet("ACTION_PACKED")
-    ws.sheet_properties.tabColor = "C00000"
-
-    cols = [
-        "LPN", "STORE", "DIVISION", "AgeDays",
-        "PackedStatus", "UNITS",
-        "HoldReason", "Owner", "PlannedShipTime"
-    ]
-    for c_idx, name in enumerate(cols, start=1):
-        cell = ws.cell(row=1, column=c_idx, value=name)
-        cell.font = bold_font(WHITE_HEX)
-        cell.fill = fill("FFC00000")
-        cell.alignment = Alignment(horizontal="center")
-
-    ws.cell(row=2, column=1, value="-- Populate via 'POPULATE ACTION SHEETS' button on DASHBOARD --")
-    ws.cell(row=2, column=1).font = Font(italic=True, color="808080")
-
-    # CF on PackedStatus column (col E)
-    ws.conditional_formatting.add(
-        "E2:E10000",
-        Rule(type="containsText", operator="containsText", text="Overdue",
-             dxf=DifferentialStyle(fill=fill(RED_HEX), font=Font(color=_hex_font_color(WHITE_HEX))))
-    )
-    ws.conditional_formatting.add(
-        "E2:E10000",
-        Rule(type="containsText", operator="containsText", text="Pending",
-             dxf=DifferentialStyle(fill=fill(AMBER_HEX)))
-    )
-
-    freeze(ws)
-    _autofit(ws)
-    _add_sheet_doc(
-        ws, start_col=11, sheet_name="ACTION_PACKED",
-        purpose=(
-            "Working action list for overdue packed items (ActionFlag=TRUE), "
-            "sorted by AgeDays descending (oldest first). "
-            "The overdue threshold is Packed_MaxAgeDays in CONFIG."
-        ),
-        data_flow=(
-            "IN: populated from IN_PACKED (rows where ActionFlag=TRUE) "
-            "via POPULATE ACTION SHEETS button on DASHBOARD  |  "
-            "OUT: manual action tracking only — no formulas read from this sheet"
-        ),
-        how_to_use=(
-            "1. Click POPULATE ACTION SHEETS on DASHBOARD to refresh. "
-            "2. Fill in HoldReason, Owner, and PlannedShipTime for each overdue LPN. "
-            "3. Once shipped, re-paste IN_PACKED data and click POPULATE again — "
-            "shipped items will no longer appear."
-        ),
-    )
-
-
 def build_history(wb: Workbook) -> None:
     ws = wb.create_sheet("HISTORY")
     ws.sheet_properties.tabColor = "808080"
