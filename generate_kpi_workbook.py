@@ -1274,13 +1274,13 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
     # WEEKDAY(TODAY(),2) returns 1=Mon … 7=Sun; TODAY()-WEEKDAY(TODAY(),2)+1 = this Monday
     WEEK_ACC = "FF4682B4"   # steel blue
     _kpi_card(ws, row=42, col=2, title="CARTONS THIS WEEK",
-              formula='=SUMIFS(tblHistory[ShippedCartons],tblHistory[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],"<="&TODAY())',
+              formula='=SUMIFS(tblDispatchDaily[ShippedCartons],tblDispatchDaily[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
               accent=WEEK_ACC)
     _kpi_card(ws, row=42, col=6, title="AVG PERF % (WEEK)",
-              formula='=IFERROR(TEXT(AVERAGEIFS(tblHistory[PerformancePct],tblHistory[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],"<="&TODAY()),"0.0%"),"N/A")',
+              formula='=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[PerformancePct],tblDispatchDaily[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],"<="&TODAY()),"0.0%"),"N/A")',
               accent=WEEK_ACC)
     _kpi_card(ws, row=42, col=10, title="STAFF COUNT THIS WEEK",
-              formula='=SUMIFS(tblHistory[TotalStaff],tblHistory[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],"<="&TODAY())',
+              formula='=SUMIFS(tblDispatchDaily[TotalStaff],tblDispatchDaily[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
               accent=WEEK_ACC)
 
     # Row 46: spacer
