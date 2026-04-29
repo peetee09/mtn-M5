@@ -638,6 +638,226 @@ def build_data_quality(wb: Workbook) -> None:
     _autofit(ws)
 
 
+def build_daily_entry(wb: Workbook) -> None:
+    """DAILY_ENTRY — a structured per-shift data entry form.
+
+    The user fills in one row per active shift for the day (Date, Cartons
+    Shipped, Total Staff, Target / Person, Audit Count) and clicks the VBA
+    SUBMIT DAY button.  The macro writes the data to HISTORY, T_DISPATCH_KPI,
+    IN_TARGETS_DAILY, and IN_AUDIT_LOG so all dashboard KPIs update automatically.
+    """
+    ws = wb.create_sheet("DAILY_ENTRY")
+    ws.sheet_properties.tabColor = "00B0F0"   # cyan — visually distinct
+
+    # Light-grey page background
+    for r in ws.iter_rows(min_row=1, max_row=20, min_col=1, max_col=8):
+        for cell in r:
+            cell.fill = fill(PAGE_BG_HEX)
+
+    # ── Row 1: Title bar ──────────────────────────────────────────────────────
+    ws.merge_cells("A1:H1")
+    tc = ws["A1"]
+    tc.value = "DAILY DATA ENTRY FORM"
+    tc.font = Font(bold=True, size=16, color=_hex_font_color(WHITE_HEX))
+    tc.fill = fill(HEADER_HEX)
+    tc.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 36
+
+    # ── Row 2: Instructions ───────────────────────────────────────────────────
+    ws.merge_cells("A2:H2")
+    ic = ws["A2"]
+    ic.value = ("Fill in shift data for the day, then click SUBMIT DAY.  "
+                "The dashboard calculates all KPIs for the day, week, and month automatically.")
+    ic.font = Font(italic=True, size=9, color=_hex_font_color(AMBER_HEX))
+    ic.fill = fill("FFFFF4CC")
+    ic.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[2].height = 28
+
+    # Row 3: Spacer
+    ws.row_dimensions[3].height = 10
+
+    # ── Row 4: Business Date input ────────────────────────────────────────────
+    ws.row_dimensions[4].height = 28
+    lbl4 = ws["A4"]
+    lbl4.value = "Business Date:"
+    lbl4.font = Font(bold=True, size=11)
+    lbl4.alignment = Alignment(horizontal="right", vertical="center")
+    lbl4.fill = fill(PAGE_BG_HEX)
+
+    ws.merge_cells("B4:C4")
+    dt4 = ws["B4"]
+    dt4.value = datetime.date.today()
+    dt4.number_format = "dd/mm/yyyy"
+    dt4.font = Font(bold=True, size=13, color=_hex_font_color(HEADER_HEX))
+    dt4.fill = fill(CARD_BG_HEX)
+    dt4.alignment = Alignment(horizontal="center", vertical="center")
+    dt4.border = Border(
+        left=Side(style="thin", color=BLUE_HEX[2:]),
+        right=Side(style="thin", color=BLUE_HEX[2:]),
+        top=Side(style="thin", color=BLUE_HEX[2:]),
+        bottom=Side(style="thin", color=BLUE_HEX[2:]),
+    )
+
+    hint4 = ws["D4"]
+    hint4.value = "(change if entering data for a past date)"
+    hint4.font = Font(italic=True, size=8, color=_hex_font_color("FF808080"))
+    hint4.alignment = Alignment(vertical="center")
+    hint4.fill = fill(PAGE_BG_HEX)
+
+    # Row 5: Spacer
+    ws.row_dimensions[5].height = 8
+
+    # ── Row 6: SHIFT DATA section header ─────────────────────────────────────
+    _section_header(ws, 6, "  SHIFT DATA  —  enter values for each active shift", SECN_HEX)
+    ws.row_dimensions[6].height = 20
+
+    # ── Row 7: Column headers ─────────────────────────────────────────────────
+    shift_hdrs = ["Shift", "Cartons Shipped", "Total Staff", "Target / Person", "Audit Count"]
+    for ci, hdr in enumerate(shift_hdrs, start=1):
+        c = ws.cell(row=7, column=ci, value=hdr)
+        c.font = Font(bold=True, size=10, color=_hex_font_color(WHITE_HEX))
+        c.fill = fill(BLUE_HEX)
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = thin_border()
+    ws.row_dimensions[7].height = 18
+
+    # ── Rows 8-9: Day / Night data entry cells ────────────────────────────────
+    _INPUT_BORDER = Border(
+        left=Side(style="thin", color=BLUE_HEX[2:]),
+        right=Side(style="thin", color=BLUE_HEX[2:]),
+        top=Side(style="thin", color=BLUE_HEX[2:]),
+        bottom=Side(style="thin", color=BLUE_HEX[2:]),
+    )
+    for row_idx, shift_label, row_bg in [(8, "Day", CARD_BG_HEX), (9, "Night", "FFF7F7F7")]:
+        ws.row_dimensions[row_idx].height = 30
+        sc = ws.cell(row=row_idx, column=1, value=shift_label)
+        sc.font = Font(bold=True, size=12)
+        sc.fill = fill(row_bg)
+        sc.alignment = Alignment(horizontal="center", vertical="center")
+        sc.border = _INPUT_BORDER
+        for col_idx in range(2, 6):
+            ic2 = ws.cell(row=row_idx, column=col_idx, value=0)
+            ic2.font = Font(size=12, color=_hex_font_color(HEADER_HEX))
+            ic2.fill = fill(row_bg)
+            ic2.alignment = Alignment(horizontal="center", vertical="center")
+            ic2.border = _INPUT_BORDER
+
+    # Row 10: Spacer
+    ws.row_dimensions[10].height = 8
+
+    # ── Row 11: EXCEPTION COUNTS section header ───────────────────────────────
+    ws.merge_cells("A11:H11")
+    eh = ws["A11"]
+    eh.value = "  EXCEPTION COUNTS  (optional — leave blank to use live values from data sheets)"
+    eh.font = Font(bold=True, size=11, color=_hex_font_color(WHITE_HEX))
+    eh.fill = fill("FFC00000")
+    eh.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[11].height = 20
+
+    _EXCEP_BORDER = Border(
+        left=Side(style="thin", color="C00000"),
+        right=Side(style="thin", color="C00000"),
+        top=Side(style="thin", color="C00000"),
+        bottom=Side(style="thin", color="C00000"),
+    )
+    # Row 12: HRP Open Items
+    ws.row_dimensions[12].height = 24
+    l12 = ws["A12"]
+    l12.value = "HRP Open Items:"
+    l12.font = Font(bold=True)
+    l12.alignment = Alignment(horizontal="right", vertical="center")
+    l12.fill = fill(PAGE_BG_HEX)
+
+    v12 = ws["B12"]
+    v12.value = ""
+    v12.fill = fill(CARD_BG_HEX)
+    v12.alignment = Alignment(horizontal="center", vertical="center")
+    v12.border = _EXCEP_BORDER
+
+    h12 = ws["C12"]
+    h12.value = "(blank = live count from IN_HRP)"
+    h12.font = Font(italic=True, size=8, color=_hex_font_color("FF808080"))
+    h12.alignment = Alignment(vertical="center")
+    h12.fill = fill(PAGE_BG_HEX)
+
+    # Row 13: Packed Overdue
+    ws.row_dimensions[13].height = 24
+    l13 = ws["A13"]
+    l13.value = "Packed Overdue:"
+    l13.font = Font(bold=True)
+    l13.alignment = Alignment(horizontal="right", vertical="center")
+    l13.fill = fill(PAGE_BG_HEX)
+
+    v13 = ws["B13"]
+    v13.value = ""
+    v13.fill = fill(CARD_BG_HEX)
+    v13.alignment = Alignment(horizontal="center", vertical="center")
+    v13.border = _EXCEP_BORDER
+
+    h13 = ws["C13"]
+    h13.value = "(blank = live count from IN_PACKED)"
+    h13.font = Font(italic=True, size=8, color=_hex_font_color("FF808080"))
+    h13.alignment = Alignment(vertical="center")
+    h13.fill = fill(PAGE_BG_HEX)
+
+    # Row 14: Spacer
+    ws.row_dimensions[14].height = 12
+
+    # ── Rows 15-16: Button placeholder cells ──────────────────────────────────
+    # (Actual VBA Form Buttons are placed here by AddButtons when run from Excel)
+    ws.row_dimensions[15].height = 30
+    ws.row_dimensions[16].height = 16
+
+    ws.merge_cells("B15:C15")
+    sb = ws["B15"]
+    sb.value = "[ SUBMIT DAY ]"
+    sb.font = Font(bold=True, size=10, color=_hex_font_color(HEADER_HEX))
+    sb.fill = fill("FFC8E6C9")   # light green — mimics submit button
+    sb.alignment = Alignment(horizontal="center", vertical="center")
+    sb.border = thin_border()
+
+    ws.merge_cells("B16:C16")
+    sd = ws["B16"]
+    sd.value = "Save data and update HISTORY"
+    sd.font = Font(italic=True, size=8, color=_hex_font_color(TEXT_MD_HEX))
+    sd.alignment = Alignment(horizontal="center")
+    sd.fill = fill(PAGE_BG_HEX)
+
+    ws.merge_cells("E15:F15")
+    cb = ws["E15"]
+    cb.value = "[ CLEAR FORM ]"
+    cb.font = Font(bold=True, size=10, color=_hex_font_color(HEADER_HEX))
+    cb.fill = fill("FFFFEBEE")   # light red — mimics clear button
+    cb.alignment = Alignment(horizontal="center", vertical="center")
+    cb.border = thin_border()
+
+    ws.merge_cells("E16:F16")
+    cd = ws["E16"]
+    cd.value = "Reset all fields to zero / today"
+    cd.font = Font(italic=True, size=8, color=_hex_font_color(TEXT_MD_HEX))
+    cd.alignment = Alignment(horizontal="center")
+    cd.fill = fill(PAGE_BG_HEX)
+
+    # Row 17: Spacer
+    ws.row_dimensions[17].height = 8
+
+    # Row 18: Back to DASHBOARD link
+    ws.row_dimensions[18].height = 16
+    bk = ws["B18"]
+    bk.value = "<< Back to DASHBOARD"
+    bk.hyperlink = "#DASHBOARD!A1"
+    bk.font = Font(bold=True, size=9, underline="single", color="FF004646")
+    bk.fill = fill(PAGE_BG_HEX)
+
+    # Column widths
+    ws.column_dimensions["A"].width = 18
+    for ci_w in range(2, 6):
+        ws.column_dimensions[col_letter(ci_w)].width = 16
+    ws.column_dimensions["F"].width = 14
+    ws.column_dimensions["G"].width = 20
+    ws.column_dimensions["H"].width = 20
+
+
 def build_charts(wb: Workbook) -> None:
     """Dedicated CHARTS sheet with 5 pre-built charts that update as data is added."""
     ws = wb.create_sheet("CHARTS")
@@ -964,12 +1184,13 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
         nc.border = thin_border()
     ws.row_dimensions[31].height = 16
 
-    # Row 32: secondary nav — analysis/chart sheets
+    # Row 32: secondary nav — analysis/chart sheets + DAILY_ENTRY
     nav_links2 = [
         (2,  "CHARTS",           "#CHARTS!A1",           "0070C0"),
         (4,  "DATA_QUALITY",     "#DATA_QUALITY!A1",     "8B6914"),
         (6,  "ACTION_HRP",       "#ACTION_HRP!A1",       "8B0000"),
         (8,  "ACTION_PACKED",    "#ACTION_PACKED!A1",    "8B0000"),
+        (10, "DAILY_ENTRY",      "#DAILY_ENTRY!A1",      "0070C0"),
     ]
     for start_ci, label, target, fc in nav_links2:
         end_ci = start_ci + 1
@@ -1001,7 +1222,7 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
     note.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
     ws.row_dimensions[35].height = 28
 
-    # Row 36: button descriptions
+    # Row 36: existing button placeholders (Refresh All, Snapshot, Populate)
     btns = [
         (2,  "[ REFRESH ALL ]",            "Recalculates all formulas & refreshes PivotTables"),
         (6,  "[ TAKE DAILY SNAPSHOT ]",    "Appends current KPIs to the HISTORY sheet"),
@@ -1022,6 +1243,70 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
         dc.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     ws.row_dimensions[36].height = 18
     ws.row_dimensions[37].height = 24
+
+    # ── Row 38-39: FILL DATA button placeholder ──────────────────────────────
+    ws.row_dimensions[38].height = 24
+    ws.merge_cells("B38:D38")
+    fb = ws["B38"]
+    fb.value = "[ FILL DATA ]"
+    fb.font = Font(bold=True, size=9, color=_hex_font_color(HEADER_HEX))
+    fb.fill = fill("FFC8E6C9")   # light green — mimics FILL DATA button
+    fb.alignment = Alignment(horizontal="center", vertical="center")
+    fb.border = thin_border()
+
+    ws.row_dimensions[39].height = 20
+    ws.merge_cells("B39:N39")
+    fd = ws["B39"]
+    fd.value = ("Open the daily entry form to record shift data for a specific day — "
+                "the dashboard calculates all KPIs for the day, week, and month.")
+    fd.font = Font(italic=True, size=8, color=_hex_font_color(TEXT_MD_HEX))
+    fd.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    fd.fill = fill(PAGE_BG_HEX)
+
+    # Row 40: spacer
+    ws.row_dimensions[40].height = 8
+
+    # ── Row 41: WEEKLY SUMMARY section ────────────────────────────────────────
+    _section_header(ws, 41, "  WEEKLY SUMMARY  (Monday – today)", "FF4682B4")
+    ws.row_dimensions[41].height = 20
+
+    # Rows 42-45: Weekly KPI cards
+    # Use tblDispatchDaily (one row per BusinessDate) so repeated snapshots in
+    # tblHistory do not double-count weekly totals or skew the average.
+    # WEEKDAY(TODAY(),2) returns 1=Mon … 7=Sun; TODAY()-WEEKDAY(TODAY(),2)+1 = this Monday
+    WEEK_ACC = "FF4682B4"   # steel blue
+    _kpi_card(ws, row=42, col=2, title="CARTONS THIS WEEK",
+              formula='=SUMIFS(tblDispatchDaily[TotalShipped],tblDispatchDaily[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
+              accent=WEEK_ACC)
+    _kpi_card(ws, row=42, col=6, title="AVG PERF % (WEEK)",
+              formula='=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[DailyPerformancePct],tblDispatchDaily[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],"<="&TODAY()),"0.0%"),"N/A")',
+              accent=WEEK_ACC)
+    _kpi_card(ws, row=42, col=10, title="STAFF COUNT THIS WEEK",
+              formula='=SUMIFS(tblDispatchDaily[TotalStaff],tblDispatchDaily[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
+              accent=WEEK_ACC)
+
+    # Row 46: spacer
+    ws.row_dimensions[46].height = 8
+
+    # ── Row 47: MONTHLY SUMMARY section ───────────────────────────────────────
+    _section_header(ws, 47, "  MONTHLY SUMMARY  (1st of month – today)", "FF703090")
+    ws.row_dimensions[47].height = 20
+
+    # Rows 48-51: Monthly KPI cards
+    # Use tblDispatchDaily (one row per BusinessDate) for the same de-duplication reason.
+    MONTH_ACC = "FF703090"   # purple
+    _kpi_card(ws, row=48, col=2, title="CARTONS THIS MONTH",
+              formula='=SUMIFS(tblDispatchDaily[TotalShipped],tblDispatchDaily[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
+              accent=MONTH_ACC)
+    _kpi_card(ws, row=48, col=6, title="AVG PERF % (MONTH)",
+              formula='=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[DailyPerformancePct],tblDispatchDaily[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],"<="&TODAY()),"0.0%"),"N/A")',
+              accent=MONTH_ACC)
+    _kpi_card(ws, row=48, col=10, title="STAFF COUNT THIS MONTH",
+              formula='=SUMIFS(tblDispatchDaily[TotalStaff],tblDispatchDaily[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
+              accent=MONTH_ACC)
+
+    # Row 52: spacer
+    ws.row_dimensions[52].height = 8
 
     # ── Column widths ─────────────────────────────────────────────────────────
     # Col A = narrow left margin; B–N = even card-column width
@@ -1170,13 +1455,14 @@ def build_workbook(output_path: str = "KPI_Workbook.xlsm") -> None:
     build_action_packed(wb)
     build_history(wb)
     build_data_quality(wb)
+    build_daily_entry(wb)
     build_charts(wb)
     build_dashboard(wb)
 
     # Re-order sheets for usability.
     # Iterates desired order; skips any sheet not present to avoid KeyError.
     desired_order = [
-        "DASHBOARD", "CHARTS", "CONFIG",
+        "DASHBOARD", "DAILY_ENTRY", "CHARTS", "CONFIG",
         "IN_PACKED", "IN_HRP", "IN_SHIPPED_LPNS", "IN_STAFFING",
         "IN_TARGETS_DAILY", "IN_AUDIT_LOG",
         "T_DISPATCH_KPI", "T_DISPATCH_DAILY",
