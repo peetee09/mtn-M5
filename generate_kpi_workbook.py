@@ -766,24 +766,6 @@ def build_action_packed(wb: Workbook) -> None:
 
     freeze(ws)
     _autofit(ws)
-    _add_sheet_doc(
-        ws, start_col=14, sheet_name="ACTION_HRP",
-        purpose=(
-            "Working action list for HRP items where IncludeInHRP = TRUE. "
-            "Used by the dispatch team to track follow-up with city stores."
-        ),
-        data_flow=(
-            "IN: populated from IN_HRP (rows where IncludeInHRP=TRUE) "
-            "via POPULATE ACTION SHEETS button on DASHBOARD  |  "
-            "OUT: manual action tracking only — no formulas read from this sheet"
-        ),
-        how_to_use=(
-            "1. Click POPULATE ACTION SHEETS on DASHBOARD to refresh. "
-            "2. Fill in Owner (who is following up), ContactedCity (Y/N dropdown), "
-            "ContactTime, and NextStep for each item. "
-            "3. Click POPULATE ACTION SHEETS again next day to refresh with latest data."
-        ),
-    )
 
 
 def build_action_packed(wb: Workbook) -> None:
