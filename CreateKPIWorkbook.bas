@@ -1511,9 +1511,9 @@ Private Sub AddButtons(wb As Workbook)
     btn3.OnAction = "PopulateActionSheets"
     btn3.Font.Bold = True
 
-    ' Fill Data button (row 39 on DASHBOARD)
+    ' Fill Data button (row 38 on DASHBOARD — matches the B38:D38 placeholder cell)
     Dim fillBtnTop As Double
-    fillBtnTop = ws.Rows(39).Top
+    fillBtnTop = ws.Rows(38).Top
     Dim btn4 As Button
     Set btn4 = ws.Buttons.Add(10, fillBtnTop, 200, BTN_H)
     btn4.Caption = "FILL DATA"
