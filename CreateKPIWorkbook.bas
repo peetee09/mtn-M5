@@ -1238,15 +1238,17 @@ Private Sub BuildDASHBOARD(wb As Workbook)
     Call MakeSectionHeader(ws, "A41:N41", "  WEEKLY SUMMARY  (Monday – today)", RGB(70, 130, 180))
 
     ' Rows 42-45: Weekly KPI cards
+    ' Use tblDispatchDaily (one row per BusinessDate) so repeated snapshots in
+    ' tblHistory do not double-count weekly totals or skew the average.
     ' WEEKDAY(TODAY(),2) returns 1=Mon … 7=Sun, so TODAY()-WEEKDAY(TODAY(),2)+1 = this Monday
     Call MakeKPICard(ws, 42, 2, "CARTONS THIS WEEK", _
-        "=SUMIFS(tblHistory[ShippedCartons],tblHistory[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],""<=""&TODAY())", _
+        "=SUMIFS(tblDispatchDaily[TotalShipped],tblDispatchDaily[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],""<=""&TODAY())", _
         RGB(70, 130, 180))
     Call MakeKPICard(ws, 42, 6, "AVG PERF % (WEEK)", _
-        "=IFERROR(TEXT(AVERAGEIFS(tblHistory[PerformancePct],tblHistory[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],""<=""&TODAY()),""0.0%""),""N/A"")", _
+        "=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[DailyPerformancePct],tblDispatchDaily[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],""<=""&TODAY()),""0.0%""),""N/A"")", _
         RGB(70, 130, 180))
     Call MakeKPICard(ws, 42, 10, "STAFF COUNT THIS WEEK", _
-        "=SUMIFS(tblHistory[TotalStaff],tblHistory[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],""<=""&TODAY())", _
+        "=SUMIFS(tblDispatchDaily[TotalStaff],tblDispatchDaily[BusinessDate],"">=""&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],""<=""&TODAY())", _
         RGB(70, 130, 180))
 
     ' Row 46: spacer
@@ -1257,11 +1259,13 @@ Private Sub BuildDASHBOARD(wb As Workbook)
     Call MakeSectionHeader(ws, "A47:N47", "  MONTHLY SUMMARY  (1st of month – today)", RGB(112, 48, 160))
 
     ' Rows 48-51: Monthly KPI cards
+    ' Use tblDispatchDaily (one row per BusinessDate) so repeated snapshots in
+    ' tblHistory do not double-count monthly totals or skew the average.
     Call MakeKPICard(ws, 48, 2, "CARTONS THIS MONTH", _
-        "=SUMIFS(tblDispatchDaily[ShippedCartons],tblDispatchDaily[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],""<=""&TODAY())", _
+        "=SUMIFS(tblDispatchDaily[TotalShipped],tblDispatchDaily[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],""<=""&TODAY())", _
         RGB(112, 48, 160))
     Call MakeKPICard(ws, 48, 6, "AVG PERF % (MONTH)", _
-        "=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[PerformancePct],tblDispatchDaily[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],""<=""&TODAY()),""0.0%""),""N/A"")", _
+        "=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[DailyPerformancePct],tblDispatchDaily[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],""<=""&TODAY()),""0.0%""),""N/A"")", _
         RGB(112, 48, 160))
     Call MakeKPICard(ws, 48, 10, "STAFF COUNT THIS MONTH", _
         "=SUMIFS(tblDispatchDaily[TotalStaff],tblDispatchDaily[BusinessDate],"">=""&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],""<=""&TODAY())", _
@@ -2084,6 +2088,19 @@ Public Sub SubmitDailyData()
         Exit Sub
     End If
 
+    ' Validate Target / Person > 0 for every shift that has data
+    If dayHasData And dayTarget <= 0 Then
+        MsgBox "Please enter a Target / Person greater than 0 for the Day shift.", _
+               vbExclamation, "Missing Day Target"
+        Exit Sub
+    End If
+
+    If nightHasData And nightTarget <= 0 Then
+        MsgBox "Please enter a Target / Person greater than 0 for the Night shift.", _
+               vbExclamation, "Missing Night Target"
+        Exit Sub
+    End If
+
     ' ── Exception count overrides ──────────────────────────────────────────────
     Dim hrpOpen As Long, packedOverdue As Long
     Dim hrpVal As Variant: hrpVal = wsDE.Range("B12").Value
@@ -2108,8 +2125,12 @@ Public Sub SubmitDailyData()
     End If
 
     ' ── Write data ─────────────────────────────────────────────────────────────
+    ' Capture prior Application state so the error handler can always restore it
+    Dim prevCalc As XlCalculation: prevCalc = Application.Calculation
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
+
+    On Error GoTo SubmitErr
 
     Dim snapTime As Date: snapTime = Now()
     Dim rowsAdded As Long: rowsAdded = 0
@@ -2132,13 +2153,20 @@ Public Sub SubmitDailyData()
         rowsAdded = rowsAdded + 1
     End If
 
-    Application.Calculation = xlCalculationAutomatic
+    Application.Calculation = prevCalc
     Application.Calculate
     Application.ScreenUpdating = True
 
     MsgBox "Daily data submitted for " & Format(entryDate, "dd/mm/yyyy") & "." & vbCrLf & _
            rowsAdded & " shift record(s) saved to HISTORY and T_DISPATCH_KPI.", _
            vbInformation, "Submit Complete"
+    Exit Sub
+
+SubmitErr:
+    Application.Calculation = prevCalc
+    Application.ScreenUpdating = True
+    MsgBox "An error occurred while saving data:" & vbCrLf & Err.Description, _
+           vbCritical, "Submit Error"
 End Sub
 
 '================================================================================
@@ -2256,6 +2284,8 @@ End Sub
 
 ' Append a row to HISTORY, computing derived KPIs inline so the snapshot is
 ' self-contained (does not depend on T_DISPATCH_KPI formula results).
+' RAG thresholds are read from tblConfig_Rules (Amber_Threshold / Green_Threshold)
+' so HISTORY rows stay consistent when thresholds are changed in CONFIG.
 Private Sub _AppendHistory(snapTime As Date, busDate As Date, shiftName As String, _
                             shipped As Long, staff As Long, target As Double, _
                             auditCnt As Long, hrpOpen As Long, packedOverdue As Long)
@@ -2267,12 +2297,42 @@ Private Sub _AppendHistory(snapTime As Date, busDate As Date, shiftName As Strin
     On Error Resume Next: Set tbl = ws.ListObjects("tblHistory"): On Error GoTo 0
     If tbl Is Nothing Then Exit Sub
 
+    ' Read RAG thresholds from CONFIG; fall back to standard values if not found
+    Dim greenThresh As Double: greenThresh = 1
+    Dim amberThresh As Double: amberThresh = 0.9
+    Dim wsCfg As Worksheet
+    On Error Resume Next
+    Set wsCfg = ThisWorkbook.Worksheets("CONFIG")
+    If Not wsCfg Is Nothing Then
+        Dim ruleTbl As ListObject
+        Set ruleTbl = wsCfg.ListObjects("tblConfig_Rules")
+        If Not ruleTbl Is Nothing Then
+            Dim rv As Variant
+            rv = Application.WorksheetFunction.IfError( _
+                    Application.WorksheetFunction.Index( _
+                        ruleTbl.ListColumns("Value").DataBodyRange, _
+                        Application.WorksheetFunction.Match("Green_Threshold", _
+                            ruleTbl.ListColumns("RuleName").DataBodyRange, 0)), _
+                    1)
+            If IsNumeric(rv) Then greenThresh = CDbl(rv)
+
+            rv = Application.WorksheetFunction.IfError( _
+                    Application.WorksheetFunction.Index( _
+                        ruleTbl.ListColumns("Value").DataBodyRange, _
+                        Application.WorksheetFunction.Match("Amber_Threshold", _
+                            ruleTbl.ListColumns("RuleName").DataBodyRange, 0)), _
+                    0.9)
+            If IsNumeric(rv) Then amberThresh = CDbl(rv)
+        End If
+    End If
+    On Error GoTo 0
+
     Dim expected As Double: expected = staff * target
     Dim perfPct  As Double: perfPct  = IIf(expected > 0, shipped / expected, 0)
     Dim rag      As String
-    If perfPct >= 1 Then
+    If perfPct >= greenThresh Then
         rag = "Green"
-    ElseIf perfPct >= 0.9 Then
+    ElseIf perfPct >= amberThresh Then
         rag = "Amber"
     Else
         rag = "Red"

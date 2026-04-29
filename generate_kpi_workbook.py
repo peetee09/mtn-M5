@@ -1271,16 +1271,18 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
     ws.row_dimensions[41].height = 20
 
     # Rows 42-45: Weekly KPI cards
+    # Use tblDispatchDaily (one row per BusinessDate) so repeated snapshots in
+    # tblHistory do not double-count weekly totals or skew the average.
     # WEEKDAY(TODAY(),2) returns 1=Mon … 7=Sun; TODAY()-WEEKDAY(TODAY(),2)+1 = this Monday
     WEEK_ACC = "FF4682B4"   # steel blue
     _kpi_card(ws, row=42, col=2, title="CARTONS THIS WEEK",
-              formula='=SUMIFS(tblHistory[ShippedCartons],tblHistory[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],"<="&TODAY())',
+              formula='=SUMIFS(tblDispatchDaily[TotalShipped],tblDispatchDaily[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
               accent=WEEK_ACC)
     _kpi_card(ws, row=42, col=6, title="AVG PERF % (WEEK)",
-              formula='=IFERROR(TEXT(AVERAGEIFS(tblHistory[PerformancePct],tblHistory[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],"<="&TODAY()),"0.0%"),"N/A")',
+              formula='=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[DailyPerformancePct],tblDispatchDaily[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],"<="&TODAY()),"0.0%"),"N/A")',
               accent=WEEK_ACC)
     _kpi_card(ws, row=42, col=10, title="STAFF COUNT THIS WEEK",
-              formula='=SUMIFS(tblHistory[TotalStaff],tblHistory[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblHistory[BusinessDate],"<="&TODAY())',
+              formula='=SUMIFS(tblDispatchDaily[TotalStaff],tblDispatchDaily[BusinessDate],">="&(TODAY()-WEEKDAY(TODAY(),2)+1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
               accent=WEEK_ACC)
 
     # Row 46: spacer
@@ -1291,15 +1293,16 @@ def build_dashboard(wb: Workbook) -> None:  # noqa: C901
     ws.row_dimensions[47].height = 20
 
     # Rows 48-51: Monthly KPI cards
+    # Use tblDispatchDaily (one row per BusinessDate) for the same de-duplication reason.
     MONTH_ACC = "FF703090"   # purple
     _kpi_card(ws, row=48, col=2, title="CARTONS THIS MONTH",
-              formula='=SUMIFS(tblHistory[ShippedCartons],tblHistory[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],"<="&TODAY())',
+              formula='=SUMIFS(tblDispatchDaily[TotalShipped],tblDispatchDaily[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
               accent=MONTH_ACC)
     _kpi_card(ws, row=48, col=6, title="AVG PERF % (MONTH)",
-              formula='=IFERROR(TEXT(AVERAGEIFS(tblHistory[PerformancePct],tblHistory[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],"<="&TODAY()),"0.0%"),"N/A")',
+              formula='=IFERROR(TEXT(AVERAGEIFS(tblDispatchDaily[DailyPerformancePct],tblDispatchDaily[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],"<="&TODAY()),"0.0%"),"N/A")',
               accent=MONTH_ACC)
     _kpi_card(ws, row=48, col=10, title="STAFF COUNT THIS MONTH",
-              formula='=SUMIFS(tblHistory[TotalStaff],tblHistory[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblHistory[BusinessDate],"<="&TODAY())',
+              formula='=SUMIFS(tblDispatchDaily[TotalStaff],tblDispatchDaily[BusinessDate],">="&DATE(YEAR(TODAY()),MONTH(TODAY()),1),tblDispatchDaily[BusinessDate],"<="&TODAY())',
               accent=MONTH_ACC)
 
     # Row 52: spacer
