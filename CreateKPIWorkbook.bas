@@ -2084,6 +2084,17 @@ Public Sub SubmitDailyData()
         Exit Sub
     End If
 
+    If dayHasData And dayTarget <= 0 Then
+        MsgBox "Please enter a Target / Person greater than 0 for the Day shift.", _
+               vbExclamation, "Missing Day Target"
+        Exit Sub
+    End If
+
+    If nightHasData And nightTarget <= 0 Then
+        MsgBox "Please enter a Target / Person greater than 0 for the Night shift.", _
+               vbExclamation, "Missing Night Target"
+        Exit Sub
+    End If
     ' ── Exception count overrides ──────────────────────────────────────────────
     Dim hrpOpen As Long, packedOverdue As Long
     Dim hrpVal As Variant: hrpVal = wsDE.Range("B12").Value
